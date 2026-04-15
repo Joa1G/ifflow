@@ -28,9 +28,7 @@ def app_with_routes():
     def _admin_only():
         return {"ok": True}
 
-    @app.get(
-        "/super-only", dependencies=[Depends(require_role(UserRole.SUPER_ADMIN))]
-    )
+    @app.get("/super-only", dependencies=[Depends(require_role(UserRole.SUPER_ADMIN))])
     def _super_only():
         return {"ok": True}
 
@@ -54,17 +52,13 @@ class TestGetCurrentUserPayload:
         assert response.json()["error"]["code"] == "UNAUTHENTICATED"
 
     def test_malformed_token_returns_401_invalid_token(self, app_with_routes):
-        response = app_with_routes.get(
-            "/me", headers={"Authorization": "Bearer xxx"}
-        )
+        response = app_with_routes.get("/me", headers={"Authorization": "Bearer xxx"})
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "INVALID_TOKEN"
 
     def test_wrong_scheme_returns_401(self, app_with_routes):
         # HTTPBearer rejeita schemes diferentes de "Bearer".
-        response = app_with_routes.get(
-            "/me", headers={"Authorization": "Basic abc"}
-        )
+        response = app_with_routes.get("/me", headers={"Authorization": "Basic abc"})
         assert response.status_code == 401
 
 
