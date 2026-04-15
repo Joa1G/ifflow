@@ -1,0 +1,111 @@
+name: backend-ci
+
+# ============================================================
+# CI do backend
+# ============================================================
+# Roda APENAS quando há mudanças em apps/backend/**
+# ou no próprio workflow.
+#
+# Steps:
+#   1. Checkout
+#   2. Setup Python 3.12 + uv
+#   3. Instalar dependências
+#   4. Lint com ruff
+#   5. Testes com pytest (com Postgres de serviço)
+#   6. Cobertura mínima 70%
+# ============================================================
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+# Cancela runs anteriores do mesmo PR ao fazer push novo
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test backend
+    runs-on: ubuntu-latest
+
+    # Postgres de teste isolado, não compartilha com dev
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ifflow_test
+          POSTGRES_PASSWORD: ifflow_test_password
+          POSTGRES_DB: ifflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ifflow_test -d ifflow_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    env:
+      # Variáveis que os testes vão ler via pydantic-settings
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql://ifflow_test:ifflow_test_password@localhost:5432/ifflow_test
+      JWT_SECRET: test-jwt-secret-at-least-32-bytes-long-xxxxxxxx
+      JWT_EXPIRATION_HOURS: "24"
+      RESEND_API_KEY: ""
+      EMAIL_FROM: "test@ifflow.local"
+      FRONTEND_URL: "http://localhost:5173"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "apps/backend/uv.lock"
+
+      - name: Setup Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run linter (ruff)
+        run: uv run ruff check .
+
+      - name: Run formatter check (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=70 \
+            -v
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage.xml
+          retention-days: 7

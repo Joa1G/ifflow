@@ -1,0 +1,36 @@
+# ============================================================
+# IFFLOW — docker-compose.yml
+# ============================================================
+# Este arquivo sobe APENAS o Postgres em desenvolvimento.
+# Backend e frontend rodam fora do Docker para ter iteração mais rápida
+# (hot reload do Uvicorn e Vite).
+#
+# Uso:
+#   docker compose up -d        # sobe em background
+#   docker compose down         # para
+#   docker compose logs -f db   # ver logs
+#   docker compose down -v      # para e apaga o volume (reseta o banco)
+# ============================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ifflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ifflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ifflow_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ifflow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ifflow} -d ${POSTGRES_DB:-ifflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+    name: ifflow-postgres-data

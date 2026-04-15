@@ -1,0 +1,84 @@
+name: frontend-ci
+
+# ============================================================
+# CI do frontend
+# ============================================================
+# Roda APENAS quando há mudanças em apps/frontend/**
+# ou no próprio workflow.
+#
+# Steps:
+#   1. Checkout
+#   2. Setup Node 20 + cache do npm
+#   3. Instalar dependências
+#   4. Lint com ESLint
+#   5. Type-check com tsc --noEmit
+#   6. Testes com Vitest + cobertura
+#   7. Build do Vite (garante que o build não quebra)
+#
+# NÃO roda geração de tipos em CI — usa o api.ts commitado.
+# Se alguém commitar sem regenerar, os testes quebram, o que
+# é exatamente o sinal desejado.
+# ============================================================
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/frontend
+
+    env:
+      # URL fake de API — testes usam MSW, não chamam API real
+      VITE_API_URL: "http://localhost:8000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter (ESLint)
+        run: npm run lint
+
+      - name: Type check (tsc)
+        run: npm run type-check
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: apps/frontend/coverage/
+          retention-days: 7
+
+      - name: Build (smoke test)
+        run: npm run build

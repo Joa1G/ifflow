@@ -1,0 +1,93 @@
+# ============================================================
+# IFFLOW — .gitignore
+# ============================================================
+
+# ------------------------------------------------------------
+# Variáveis de ambiente
+# ------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+# Mantemos o .env.example versionado como documentação
+
+# ------------------------------------------------------------
+# Python (apps/backend)
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.tox/
+# uv
+.uv-cache/
+uv.lock.bak
+# Distribuição e build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ------------------------------------------------------------
+# Node / Frontend (apps/frontend)
+# ------------------------------------------------------------
+node_modules/
+# Build do Vite
+apps/frontend/dist/
+# Cache do Vite
+apps/frontend/.vite/
+# Coverage do Vitest
+apps/frontend/coverage/
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------
+# IDEs e editores
+# ------------------------------------------------------------
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+# Volume do Postgres persistido localmente
+.docker-data/
+postgres-data/
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+*.log
+logs/
+
+# ------------------------------------------------------------
+# Sistemas operacionais
+# ------------------------------------------------------------
+Thumbs.db
+Desktop.ini
+
+# ------------------------------------------------------------
+# Arquivos temporários do projeto
+# ------------------------------------------------------------
+tmp/
+temp/
+*.tmp
