@@ -1,23 +1,23 @@
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
+# Garante que todos os SQLModel sejam registrados em SQLModel.metadata antes
+# do autogenerate. Tasks futuras (B-03, B-14, B-22) adicionarão models neste
+# pacote — basta importá-los em app/models/__init__.py para que apareçam.
+import app.models  # noqa: F401
 from alembic import context
+from app.config import settings
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Sobrescreve a URL do .ini com a variável de ambiente
-database_url = os.environ.get("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+# A fonte da verdade da URL é app.config.settings — alembic.ini fica vazio.
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# SQLModel.metadata detecta todos os models importados.
-# Cada model deve ser importado antes de rodar autogenerate.
 target_metadata = SQLModel.metadata
 
 

@@ -474,6 +474,23 @@ ADRs numerados. Cada um explica **por que** uma decisão foi tomada, para que o 
 
 **Revisitar se**: o projeto adicionar um terceiro app, ou builds locais começarem a levar mais de 2 minutos.
 
+### ADR-015 — Backend síncrono: SQLModel `Session` e dependency `get_session` sync
+**Status**: Aceito
+
+**Contexto**: SQLModel/SQLAlchemy oferece tanto API síncrona (`Session`) quanto assíncrona (`AsyncSession`). FastAPI suporta as duas. Precisamos definir qual seguir antes de escrever services e routers (B-05 em diante), porque misturar os dois modelos no mesmo projeto é fonte recorrente de bugs sutis (sessão fechada no contexto errado, `await` esquecido, etc).
+
+**Decisão**: Backend 100% síncrono. A dependency `get_session` em `app/database.py` retorna `sqlmodel.Session` (sync). Routers são funções `def` (não `async def`), exceto quando explicitamente precisarem de I/O concorrente que justifique async (não há caso previsto no MVP). Services são todos síncronos.
+
+**Consequências**:
+- (+) Alinha com ADR-001 (monolito síncrono) — mantém a postura coerente em todas as camadas
+- (+) Curva de aprendizado menor para a equipe inexperiente — sem necessidade de entender event loop, `await`, `asyncio.gather`, contextvars
+- (+) Stack traces mais simples de debugar; menor risco de "session is bound to a different loop"
+- (+) Compatibilidade direta com bibliotecas síncronas (passlib, PyJWT, Resend SDK, slowapi)
+- (−) Throughput por worker é menor que async sob alta concorrência de I/O — irrelevante para o piloto (~100 req/s previstos no ADR-001)
+- (−) Migrar para async no futuro exigirá refactor de services e dependencies — aceitável pelo horizonte do projeto
+
+**Revisitar se**: o sistema sair do piloto e precisar atender > 500 req/s, OU se uma integração externa de longa duração (chamada bloqueante > 1s) virar gargalo recorrente.
+
 ---
 
 ## Segurança — resumo do modelo de ameaças
