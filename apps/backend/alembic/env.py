@@ -3,13 +3,12 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
-from alembic import context
-from app.config import settings
-
 # Garante que todos os SQLModel sejam registrados em SQLModel.metadata antes
 # do autogenerate. Tasks futuras (B-03, B-14, B-22) adicionarão models neste
 # pacote — basta importá-los em app/models/__init__.py para que apareçam.
 import app.models  # noqa: F401
+from alembic import context
+from app.config import settings
 
 config = context.config
 
