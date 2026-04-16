@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 # obrigatórias estejam faltando.
 from app.config import settings  # noqa: F401
 from app.core.exceptions import IFFLOWError
+from app.routers import auth as auth_router
 
 app = FastAPI(
     title="IFFLOW API",
@@ -64,6 +65,9 @@ async def validation_exception_handler(
         http_status=422,
         details={"errors": safe_errors},
     )
+
+
+app.include_router(auth_router.router)
 
 
 @app.get("/health")
