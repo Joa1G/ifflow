@@ -4,16 +4,29 @@ Services NAO conhecem FastAPI (sem HTTPException, Depends). Levantam excecoes
 de app.core.exceptions que os routers traduzem para HTTP.
 """
 
+import hashlib
+import secrets
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
 from app.config import settings
 from app.core.enums import UserRole, UserStatus
-from app.core.exceptions import ConflictError, ForbiddenError, UnauthenticatedError
+from app.core.exceptions import (
+    ConflictError,
+    ForbiddenError,
+    UnauthenticatedError,
+    ValidationError,
+)
 from app.core.security import create_access_token, hash_password, verify_password
+from app.email.client import send_email
+from app.email.templates import password_reset_email
+from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.schemas.auth import RegisterRequest
+
+PASSWORD_RESET_TOKEN_EXPIRATION_HOURS = 1
 
 
 @dataclass
@@ -102,3 +115,81 @@ def authenticate_user(session: Session, email: str, password: str) -> LoginResul
     access_token = create_access_token(user.id, user.role)
     expires_in = settings.jwt_expiration_hours * 3600
     return LoginResult(user=user, access_token=access_token, expires_in=expires_in)
+
+
+def _hash_reset_token(token: str) -> str:
+    """SHA-256 em hex. Armazenamos so o hash; o token em claro vai no email."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def request_password_reset(session: Session, email: str) -> None:
+    """Gera token, grava o hash e envia email com link de redefinicao.
+
+    Silencioso por design: se o email nao existe ou o user nao esta APPROVED,
+    nada acontece. O endpoint sempre retorna 200 para nao vazar existencia
+    de conta (CONTRACTS.md e REQ de seguranca).
+    """
+    user = session.exec(select(User).where(User.email == email)).first()
+    if user is None or user.status != UserStatus.APPROVED:
+        return
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    reset = PasswordResetToken(
+        user_id=user.id,
+        token_hash=_hash_reset_token(token),
+        expires_at=now + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRATION_HOURS),
+    )
+    session.add(reset)
+    session.commit()
+
+    reset_url = f"{settings.frontend_url}/reset-password?token={token}"
+    subject, html = password_reset_email(user.name, reset_url)
+    send_email(to=user.email, subject=subject, html=html)
+
+
+def confirm_password_reset(session: Session, token: str, new_password: str) -> None:
+    """Valida o token e atualiza a senha do usuario.
+
+    Erros (todos com code INVALID_RESET_TOKEN e mensagem identica — nao
+    revelar se o token nao existe, se expirou, ou se ja foi usado):
+    - Token nao encontrado
+    - Token expirado (expires_at < now)
+    - Token ja usado (used_at != null)
+    - User dono do token foi deletado
+
+    Em caso de sucesso, marca used_at e atualiza password_hash + updated_at
+    do user em uma unica transacao.
+    """
+    reset = session.exec(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == _hash_reset_token(token)
+        )
+    ).first()
+
+    now = datetime.now(timezone.utc)
+    # SQLite (testes) devolve datetime naive mesmo quando o valor foi
+    # persistido como aware. Normalizamos tratando o valor do banco como UTC.
+    if reset is not None:
+        expires_at = reset.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if reset is None or reset.used_at is not None or expires_at < now:
+        raise ValidationError(
+            "Token de redefinicao invalido ou expirado.",
+            code="INVALID_RESET_TOKEN",
+        )
+
+    user = session.get(User, reset.user_id)
+    if user is None:
+        raise ValidationError(
+            "Token de redefinicao invalido ou expirado.",
+            code="INVALID_RESET_TOKEN",
+        )
+
+    user.password_hash = hash_password(new_password)
+    user.updated_at = now
+    reset.used_at = now
+    session.add(user)
+    session.add(reset)
+    session.commit()

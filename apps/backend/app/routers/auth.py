@@ -16,6 +16,9 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     LoginUserInfo,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    PasswordResetRequestResponse,
     RegisterRequest,
     RegisterResponse,
 )
@@ -85,4 +88,29 @@ def logout(_user: User = Depends(get_current_user)) -> Response:
     # expirar. Logout e responsabilidade do frontend, que descarta o token
     # do storage. Esse endpoint existe para padronizar o fluxo e exigir
     # autenticacao — evita ruido de chamadas anonimas.
+    return Response(status_code=204)
+
+
+@router.post("/request-password-reset", response_model=PasswordResetRequestResponse)
+@limiter.limit("3/hour")
+def request_password_reset(
+    request: Request,  # noqa: ARG001 — exigido pelo decorator @limiter.limit
+    data: PasswordResetRequest,
+    session: Session = Depends(get_session),
+) -> PasswordResetRequestResponse:
+    # Sempre retorna 200 com a mesma mensagem, exista ou nao a conta. A
+    # decisao de gerar token fica no service (silencioso se email nao existe
+    # ou se o user nao esta APPROVED).
+    auth_service.request_password_reset(session, data.email)
+    return PasswordResetRequestResponse(
+        message="Se o email estiver cadastrado, um link de redefinicao foi enviado.",
+    )
+
+
+@router.post("/reset-password", status_code=204, response_class=Response)
+def reset_password(
+    data: PasswordResetConfirm,
+    session: Session = Depends(get_session),
+) -> Response:
+    auth_service.confirm_password_reset(session, data.token, data.new_password)
     return Response(status_code=204)
