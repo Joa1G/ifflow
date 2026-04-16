@@ -15,9 +15,7 @@ from app.schemas.auth import RegisterRequest
 
 def register_user(session: Session, data: RegisterRequest) -> User:
     """Cria usuario em status PENDING. Nao faz login automatico."""
-    existing = session.exec(
-        select(User).where(User.email == data.email)
-    ).first()
+    existing = session.exec(select(User).where(User.email == data.email)).first()
     if existing:
         raise ConflictError(
             "Este email ja esta cadastrado.",

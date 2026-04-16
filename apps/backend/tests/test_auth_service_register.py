@@ -44,10 +44,13 @@ class TestRegisterUser:
     def test_duplicate_email_raises_conflict(self, session: Session):
         register_user(session, _valid_register_data())
         with pytest.raises(ConflictError) as exc_info:
-            register_user(session, _valid_register_data(
-                name="Outro Nome",
-                siape="9999999",
-            ))
+            register_user(
+                session,
+                _valid_register_data(
+                    name="Outro Nome",
+                    siape="9999999",
+                ),
+            )
         assert exc_info.value.code == "EMAIL_ALREADY_EXISTS"
 
     def test_password_stored_as_hash(self, session: Session):

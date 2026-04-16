@@ -74,10 +74,13 @@ class TestRegisterPasswordValidation:
 class TestRegisterConflict:
     def test_409_duplicate_email(self, client):
         client.post("/auth/register", json=_valid_payload())
-        resp = client.post("/auth/register", json=_valid_payload(
-            name="Outro",
-            siape="9999999",
-        ))
+        resp = client.post(
+            "/auth/register",
+            json=_valid_payload(
+                name="Outro",
+                siape="9999999",
+            ),
+        )
         assert resp.status_code == 409
         body = resp.json()
         assert body["error"]["code"] == "EMAIL_ALREADY_EXISTS"
