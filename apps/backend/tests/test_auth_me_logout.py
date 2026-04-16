@@ -72,9 +72,7 @@ def test_me_sem_token_retorna_401(client: TestClient):
 
 
 def test_me_token_malformado_retorna_401(client: TestClient):
-    response = client.get(
-        "/auth/me", headers={"Authorization": "Bearer nao-e-um-jwt"}
-    )
+    response = client.get("/auth/me", headers={"Authorization": "Bearer nao-e-um-jwt"})
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "INVALID_TOKEN"
@@ -92,9 +90,7 @@ def test_me_token_expirado_retorna_401(client: TestClient, session: Session):
     }
     expired = jwt.encode(payload, settings.jwt_secret, algorithm=JWT_ALGORITHM)
 
-    response = client.get(
-        "/auth/me", headers={"Authorization": f"Bearer {expired}"}
-    )
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {expired}"})
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
