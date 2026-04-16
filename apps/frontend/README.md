@@ -71,6 +71,21 @@ Os tipos de `src/types/api.ts` são gerados a partir do OpenAPI do backend. Semp
 
 Isso sobe o backend local temporariamente e regenera o arquivo. **Nunca edite `src/types/api.ts` à mão.** Detalhes em [CLAUDE.md](./CLAUDE.md).
 
+**Quando rodar o script:**
+
+- Antes de iniciar qualquer task F-XX com `Requires backend: B-YY`
+- Depois que uma task B-YY que toca em endpoints for mergeada no `main`
+- Sempre que o TypeScript reclamar de um tipo ausente em `src/types/api.ts`
+
+Alternativamente, se o backend já estiver rodando em `http://localhost:8000`, dá para usar o script local do npm (mais rápido, não sobe backend temporário):
+
+```bash
+cd apps/frontend
+npm run generate-api-types
+```
+
+O arquivo `src/types/api.ts` é versionado no Git — commite junto com a task que o alterou.
+
 ## Tasks
 
 Lista de tasks do frontend em [docs/TASKS.md](./docs/TASKS.md). Checklist de revisão em [docs/PR_CHECKLIST.md](./docs/PR_CHECKLIST.md).
