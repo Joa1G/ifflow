@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -38,11 +39,16 @@ const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterAll(() => server.close());
 
+let queryClient: QueryClient;
+
 beforeEach(() => {
   localStorage.clear();
   useAuthStore.setState({ token: null, user: null, isHydrating: false });
   __resetApiClientForTests();
   wireAuthStoreToApiClient();
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
 });
 afterEach(() => {
   server.resetHandlers();
@@ -50,15 +56,16 @@ afterEach(() => {
 
 const renderAt = (path: string) =>
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 
 describe("<App /> — rotas públicas", () => {
-  const publicRoutes: ReadonlyArray<readonly [string, string]> = [
+  const stubRoutes: ReadonlyArray<readonly [string, string]> = [
     ["/", "HomePage"],
-    ["/login", "LoginPage"],
     ["/register", "RegisterPage"],
     ["/reset-password", "ResetPasswordPage"],
     ["/processes/abc-123", "ProcessDetailPage"],
@@ -66,9 +73,26 @@ describe("<App /> — rotas públicas", () => {
     ["/rota-inexistente", "NotFoundPage"],
   ];
 
-  it.each(publicRoutes)("renderiza %s → %s", (path, expected) => {
+  it.each(stubRoutes)("renderiza %s → %s", (path, expected) => {
     renderAt(path);
     expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("renderiza /login → LoginPage (real)", () => {
+    renderAt("/login");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: /login/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /pending → PendingPage", () => {
+    renderAt("/pending");
+    expect(
+      screen.getByRole("heading", { level: 1, name: /Aguardando aprovação/i }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -104,17 +128,23 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
 describe("<App /> — rotas protegidas sem autenticação", () => {
   it("redireciona /admin/users para /login", () => {
     renderAt("/admin/users");
-    expect(screen.getByText("LoginPage")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
   });
 
   it("redireciona /super-admin/roles para /login", () => {
     renderAt("/super-admin/roles");
-    expect(screen.getByText("LoginPage")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
   });
 
   it("redireciona /processes/:id/flow para /login", () => {
     renderAt("/processes/abc/flow");
-    expect(screen.getByText("LoginPage")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
   });
 });
 

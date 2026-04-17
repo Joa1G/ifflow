@@ -1,4 +1,10 @@
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+
+import { apiGet, apiPost } from "../lib/api-client";
+import type { ApiError } from "../lib/api-error";
+import type { LoginInput } from "../lib/validators/auth";
 import { useAuthStore, type UserMe } from "../stores/auth-store";
+import type { components } from "../types/api";
 
 /**
  * Hook de acesso à sessão de autenticação.
@@ -7,10 +13,6 @@ import { useAuthStore, type UserMe } from "../stores/auth-store";
  * (login, logout) em uma API estável. Componentes devem importar
  * daqui em vez de acessar `useAuthStore` diretamente — isso isola a
  * dependência do Zustand e facilita migração futura.
- *
- * A mutation de login de fato (chamada a `POST /auth/login`) vive na
- * F-09 como `useLoginMutation`. Aqui, `login(token, user)` é apenas o
- * callback que popula o store após a mutation ter sucesso.
  */
 export function useAuth(): {
   token: string | null;
@@ -34,4 +36,42 @@ export function useAuth(): {
     login: setAuth,
     logout,
   };
+}
+
+type LoginResponse = components["schemas"]["LoginResponse"];
+
+/**
+ * Mutation de login.
+ *
+ * Fluxo em duas etapas para popular o store com um `UserMe` completo:
+ *   1. `POST /auth/login` devolve token + `LoginUserInfo` (forma reduzida).
+ *   2. Salvamos o token no store para habilitar o header Authorization do
+ *      api-client, e em seguida chamamos `GET /auth/me` para obter o
+ *      `UserMe` completo (siape, status, created_at etc).
+ *
+ * Se o segundo passo falhar, limpamos o token para evitar uma sessão
+ * inconsistente (token válido, user ausente) e propagamos o erro.
+ *
+ * Usamos `useAuthStore.setState` diretamente em vez de `setAuth` porque
+ * temos o token antes do user — evita um valor intermediário falso.
+ */
+export function useLoginMutation(): UseMutationResult<
+  LoginResponse,
+  ApiError,
+  LoginInput
+> {
+  return useMutation<LoginResponse, ApiError, LoginInput>({
+    mutationFn: async (credentials) => {
+      const res = await apiPost<LoginResponse>("/auth/login", credentials);
+      useAuthStore.setState({ token: res.access_token });
+      try {
+        const me = await apiGet<UserMe>("/auth/me");
+        useAuthStore.setState({ user: me });
+      } catch (err) {
+        useAuthStore.setState({ token: null, user: null });
+        throw err;
+      }
+      return res;
+    },
+  });
 }

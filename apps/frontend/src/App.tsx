@@ -9,6 +9,7 @@ import ForbiddenPage from "./pages/forbidden";
 import HomePage from "./pages/home";
 import LoginPage from "./pages/login";
 import NotFoundPage from "./pages/not-found";
+import PendingPage from "./pages/pending";
 import ProcessDetailPage from "./pages/process-detail";
 import ProcessFlowPage from "./pages/process-flow";
 import RegisterPage from "./pages/register";
@@ -21,6 +22,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/pending" element={<PendingPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/processes/:id" element={<ProcessDetailPage />} />
