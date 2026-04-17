@@ -80,6 +80,10 @@ class PasswordResetRequest(BaseModel):
     email: EmailStr
 
 
+class PasswordResetRequestResponse(BaseModel):
+    message: str
+
+
 class PasswordResetConfirm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

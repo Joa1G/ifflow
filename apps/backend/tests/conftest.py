@@ -47,3 +47,18 @@ def client(session: Session):
     app.dependency_overrides[get_session] = _override_get_session
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Zera o storage do slowapi entre testes.
+
+    Como o Limiter e um singleton em app.state compartilhado pela FastAPI app,
+    e o TestClient sempre se apresenta como o mesmo IP, sem reset um teste
+    anterior pode fazer o proximo estourar o limite inesperadamente.
+    """
+    from app.routers.auth import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()
