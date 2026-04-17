@@ -11,6 +11,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        serif: ['"Fraunces"', "ui-serif", "Georgia", "serif"],
+        sans: ['"Geist"', "ui-sans-serif", "system-ui", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -44,6 +48,15 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        ifflow: {
+          green: "hsl(var(--ifflow-green))",
+          "green-hover": "hsl(var(--ifflow-green-hover))",
+          ink: "hsl(var(--ifflow-ink))",
+          bone: "hsl(var(--ifflow-bone))",
+          paper: "hsl(var(--ifflow-paper))",
+          rule: "hsl(var(--ifflow-rule))",
+          muted: "hsl(var(--ifflow-muted))",
         },
       },
       borderRadius: {
