@@ -152,7 +152,6 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
 
   const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
     ["/processes/abc-123/flow", "ProcessFlowPage"],
-    ["/admin/users", "AdminUsersPage"],
     ["/admin/processes", "AdminProcessesPage"],
     ["/admin/processes/new", "ProcessEditorPage"],
     ["/admin/processes/xyz/edit", "ProcessEditorPage"],
@@ -163,6 +162,20 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     renderAt(path);
     await waitFor(() =>
       expect(screen.getByText(expected)).toBeInTheDocument(),
+    );
+  });
+
+  it("renderiza /admin/users → AdminUsersPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/admin/users/pending`, () =>
+        HttpResponse.json({ users: [], total: 0 }),
+      ),
+    );
+    renderAt("/admin/users");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Cadastros pendentes" }),
+      ).toBeInTheDocument(),
     );
   });
 });
