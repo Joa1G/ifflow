@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 
 import { AuthBootstrap } from "./components/layout/auth-bootstrap";
+import { ProtectedRoute } from "./components/layout/protected-route";
 import AdminProcessesPage from "./pages/admin/processes";
 import ProcessEditorPage from "./pages/admin/process-editor";
 import AdminUsersPage from "./pages/admin/users";
@@ -23,15 +24,54 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/processes/:id" element={<ProcessDetailPage />} />
-        <Route path="/processes/:id/flow" element={<ProcessFlowPage />} />
-        <Route path="/admin/users" element={<AdminUsersPage />} />
-        <Route path="/admin/processes" element={<AdminProcessesPage />} />
-        <Route path="/admin/processes/new" element={<ProcessEditorPage />} />
+        <Route
+          path="/processes/:id/flow"
+          element={
+            <ProtectedRoute>
+              <ProcessFlowPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/processes"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminProcessesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/processes/new"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <ProcessEditorPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/processes/:id/edit"
-          element={<ProcessEditorPage />}
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <ProcessEditorPage />
+            </ProtectedRoute>
+          }
         />
-        <Route path="/super-admin/roles" element={<SuperAdminRolesPage />} />
+        <Route
+          path="/super-admin/roles"
+          element={
+            <ProtectedRoute requiredRole="SUPER_ADMIN">
+              <SuperAdminRolesPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
