@@ -1,6 +1,7 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AuthBootstrap } from "./components/layout/auth-bootstrap";
+import { Header } from "./components/layout/header";
 import { ProtectedRoute } from "./components/layout/protected-route";
 import AdminProcessesPage from "./pages/admin/processes";
 import ProcessEditorPage from "./pages/admin/process-editor";
@@ -17,9 +18,24 @@ import ResetPasswordPage from "./pages/reset-password";
 import ResetPasswordConfirmPage from "./pages/reset-password-confirm";
 import SuperAdminRolesPage from "./pages/super-admin/roles";
 
-export default function App() {
+// Rotas com shell próprio (logo e layout institucional no card).
+// Mostrar o Header global em cima delas duplicaria a marca e criaria
+// o anti-padrão de "Entrar" visível já dentro da tela de /login.
+const AUTH_SHELL_ROUTES = new Set([
+  "/login",
+  "/register",
+  "/pending",
+  "/reset-password",
+  "/reset-password/confirm",
+]);
+
+function AppShell() {
+  const { pathname } = useLocation();
+  const hideHeader = AUTH_SHELL_ROUTES.has(pathname);
+
   return (
-    <AuthBootstrap>
+    <>
+      {!hideHeader && <Header />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -82,6 +98,14 @@ export default function App() {
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthBootstrap>
+      <AppShell />
     </AuthBootstrap>
   );
 }
