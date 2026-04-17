@@ -66,7 +66,6 @@ const renderAt = (path: string) =>
 describe("<App /> — rotas públicas", () => {
   const stubRoutes: ReadonlyArray<readonly [string, string]> = [
     ["/", "HomePage"],
-    ["/register", "RegisterPage"],
     ["/reset-password", "ResetPasswordPage"],
     ["/processes/abc-123", "ProcessDetailPage"],
     ["/forbidden", "ForbiddenPage"],
@@ -85,6 +84,16 @@ describe("<App /> — rotas públicas", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("form", { name: /login/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /register → RegisterPage (real)", () => {
+    renderAt("/register");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Criar conta" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: /cadastro/i }),
     ).toBeInTheDocument();
   });
 

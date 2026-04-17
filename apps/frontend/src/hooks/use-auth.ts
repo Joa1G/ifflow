@@ -2,7 +2,7 @@ import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 
 import { apiGet, apiPost } from "../lib/api-client";
 import type { ApiError } from "../lib/api-error";
-import type { LoginInput } from "../lib/validators/auth";
+import type { LoginInput, RegisterInput } from "../lib/validators/auth";
 import { useAuthStore, type UserMe } from "../stores/auth-store";
 import type { components } from "../types/api";
 
@@ -73,5 +73,29 @@ export function useLoginMutation(): UseMutationResult<
       }
       return res;
     },
+  });
+}
+
+type RegisterResponse = components["schemas"]["RegisterResponse"];
+
+/**
+ * Mutation de cadastro.
+ *
+ * Chama `POST /auth/register` e devolve o `RegisterResponse` (id, status=PENDING,
+ * mensagem). Deliberadamente NÃO faz login automático: o usuário recém-criado
+ * está em status PENDING e não tem permissão para acessar o app — deixar isso
+ * explícito evita o anti-padrão "criei conta, por que não entro?" e mantém o
+ * fluxo de aprovação do administrador como única porta de entrada.
+ *
+ * O componente que consome essa mutation é responsável por redirecionar para
+ * /pending em sucesso e traduzir os códigos de erro do backend.
+ */
+export function useRegisterMutation(): UseMutationResult<
+  RegisterResponse,
+  ApiError,
+  RegisterInput
+> {
+  return useMutation<RegisterResponse, ApiError, RegisterInput>({
+    mutationFn: (input) => apiPost<RegisterResponse>("/auth/register", input),
   });
 }
