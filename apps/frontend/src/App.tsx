@@ -14,6 +14,7 @@ import ProcessDetailPage from "./pages/process-detail";
 import ProcessFlowPage from "./pages/process-flow";
 import RegisterPage from "./pages/register";
 import ResetPasswordPage from "./pages/reset-password";
+import ResetPasswordConfirmPage from "./pages/reset-password-confirm";
 import SuperAdminRolesPage from "./pages/super-admin/roles";
 
 export default function App() {
@@ -25,6 +26,10 @@ export default function App() {
         <Route path="/pending" element={<PendingPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route
+          path="/reset-password/confirm"
+          element={<ResetPasswordConfirmPage />}
+        />
         <Route path="/processes/:id" element={<ProcessDetailPage />} />
         <Route
           path="/processes/:id/flow"

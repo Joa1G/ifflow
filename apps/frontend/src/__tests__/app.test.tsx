@@ -66,7 +66,6 @@ const renderAt = (path: string) =>
 describe("<App /> — rotas públicas", () => {
   const stubRoutes: ReadonlyArray<readonly [string, string]> = [
     ["/", "HomePage"],
-    ["/reset-password", "ResetPasswordPage"],
     ["/processes/abc-123", "ProcessDetailPage"],
     ["/forbidden", "ForbiddenPage"],
     ["/rota-inexistente", "NotFoundPage"],
@@ -101,6 +100,40 @@ describe("<App /> — rotas públicas", () => {
     renderAt("/pending");
     expect(
       screen.getByRole("heading", { level: 1, name: /Aguardando aprovação/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /reset-password → ResetPasswordPage (real)", () => {
+    renderAt("/reset-password");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Recuperar senha" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: /recuperação de senha/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("/reset-password com ?token= redireciona para /reset-password/confirm", () => {
+    renderAt("/reset-password?token=abc123");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Definir nova senha" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /reset-password/confirm com token → página real", () => {
+    renderAt("/reset-password/confirm?token=abc123");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Definir nova senha" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: /redefinição de senha/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("/reset-password/confirm sem token redireciona para /reset-password", () => {
+    renderAt("/reset-password/confirm");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Recuperar senha" }),
     ).toBeInTheDocument();
   });
 });

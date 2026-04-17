@@ -2,7 +2,12 @@ import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 
 import { apiGet, apiPost } from "../lib/api-client";
 import type { ApiError } from "../lib/api-error";
-import type { LoginInput, RegisterInput } from "../lib/validators/auth";
+import type {
+  LoginInput,
+  PasswordResetConfirmInput,
+  PasswordResetRequestInput,
+  RegisterInput,
+} from "../lib/validators/auth";
 import { useAuthStore, type UserMe } from "../stores/auth-store";
 import type { components } from "../types/api";
 
@@ -97,5 +102,54 @@ export function useRegisterMutation(): UseMutationResult<
 > {
   return useMutation<RegisterResponse, ApiError, RegisterInput>({
     mutationFn: (input) => apiPost<RegisterResponse>("/auth/register", input),
+  });
+}
+
+type PasswordResetRequestResponse =
+  components["schemas"]["PasswordResetRequestResponse"];
+
+/**
+ * Mutation de solicitação de reset de senha.
+ *
+ * Chama `POST /auth/request-password-reset`. Por regra de contrato, o backend
+ * SEMPRE responde 200 com a mesma mensagem genérica, exista ou não a conta
+ * associada ao email — é assim que evitamos vazar a existência de cadastros.
+ * A UI deve espelhar isso: mostre a mensagem como vem, não tente customizar
+ * "email encontrado" vs "email não encontrado".
+ */
+export function usePasswordResetRequestMutation(): UseMutationResult<
+  PasswordResetRequestResponse,
+  ApiError,
+  PasswordResetRequestInput
+> {
+  return useMutation<
+    PasswordResetRequestResponse,
+    ApiError,
+    PasswordResetRequestInput
+  >({
+    mutationFn: (input) =>
+      apiPost<PasswordResetRequestResponse>(
+        "/auth/request-password-reset",
+        input,
+      ),
+  });
+}
+
+/**
+ * Mutation de confirmação de reset de senha.
+ *
+ * Chama `POST /auth/reset-password` com token + nova senha. O backend devolve
+ * 204 em sucesso e um único `code` (INVALID_RESET_TOKEN) para qualquer falha
+ * de token — não distingue token inexistente, expirado ou já usado, pra não
+ * dar pista a quem tenta adivinhar tokens. A UI não deve tentar diferenciar
+ * esses casos: trate como "inválido ou expirado".
+ */
+export function usePasswordResetConfirmMutation(): UseMutationResult<
+  void,
+  ApiError,
+  PasswordResetConfirmInput
+> {
+  return useMutation<void, ApiError, PasswordResetConfirmInput>({
+    mutationFn: (input) => apiPost<void>("/auth/reset-password", input),
   });
 }

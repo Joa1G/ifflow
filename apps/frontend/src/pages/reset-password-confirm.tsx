@@ -1,24 +1,22 @@
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 
-import { PasswordResetRequestForm } from "../components/auth/password-reset-request-form";
+import { PasswordResetConfirmForm } from "../components/auth/password-reset-confirm-form";
 
 /**
- * Tela de solicitação de reset de senha.
+ * Tela de confirmação de reset de senha.
  *
- * O link de email enviado pelo backend aponta para
- * `/reset-password?token=...`. Para manter esse contrato estável e ainda
- * assim atender ao TASKS.md (duas páginas: request e confirm), detectamos
- * o `?token=` aqui e redirecionamos para `/reset-password/confirm`,
- * preservando o token no query string.
+ * Lê o token do query string. Sem token, não faz sentido estar aqui —
+ * redirecionamos para `/reset-password` para o usuário começar o fluxo
+ * do zero. O token é passado como prop para o form em vez de vir de um
+ * `useSearchParams` lá dentro, para deixar o componente de form testável
+ * sem depender de React Router ter um `?token=` montado.
  */
-export default function ResetPasswordPage() {
+export default function ResetPasswordConfirmPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 
-  if (token) {
-    return (
-      <Navigate to={`/reset-password/confirm?token=${token}`} replace />
-    );
+  if (!token) {
+    return <Navigate to="/reset-password" replace />;
   }
 
   return (
@@ -48,15 +46,15 @@ export default function ResetPasswordPage() {
         <div className="rounded-lg border border-ifflow-rule bg-ifflow-paper p-8 shadow-[0_1px_2px_rgba(15,27,18,0.04),0_12px_32px_-12px_rgba(15,27,18,0.08)]">
           <div className="mb-6">
             <h1 className="font-serif text-2xl font-medium tracking-tight text-ifflow-ink">
-              Recuperar senha
+              Definir nova senha
             </h1>
             <p className="mt-1 text-sm text-ifflow-muted">
-              Informe seu email institucional. Se houver cadastro, enviaremos
-              um link para redefinir a senha.
+              Escolha uma nova senha de pelo menos 8 caracteres. Depois você
+              poderá entrar normalmente.
             </p>
           </div>
 
-          <PasswordResetRequestForm />
+          <PasswordResetConfirmForm token={token} />
 
           <div className="mt-6 flex items-center justify-end text-sm">
             <Link
