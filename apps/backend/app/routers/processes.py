@@ -1,8 +1,10 @@
-"""Router publico de Processes — endpoints /processes/*.
+"""Router de Processes publicos — endpoints /processes/*.
 
-Sem auth (qualquer servidor / visitante pode listar e buscar). Filtra
-rigorosamente por PUBLISHED — DRAFT/IN_REVIEW/ARCHIVED nao devem vazar por
-este endpoint (checklist de seguranca B-19).
+GET / e GET /{id} sao abertos (qualquer visitante lista/ve detalhe). GET
+/{id}/flow exige autenticacao (ADR-006: o fluxo operacional nao e info
+anonima, so servidor autenticado ve). Todos filtram rigorosamente por
+PUBLISHED — DRAFT/IN_REVIEW/ARCHIVED nao podem vazar por nenhum desses
+endpoints (checklist de seguranca B-19/B-21).
 
 A validacao do `category` como enum e feita pelo FastAPI automaticamente:
 valores invalidos retornam 422 (VALIDATION_ERROR) via o handler global em
@@ -14,12 +16,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
+from app.core.dependencies import get_current_user_payload
 from app.core.enums import ProcessCategory
 from app.database import get_session
 from app.schemas.process import (
+    FlowStepRead,
     ProcessesPublicListResponse,
+    ProcessFullFlow,
     ProcessPublicDetail,
     ProcessPublicList,
+    ProcessRef,
+    SectorRef,
+    StepResourceRead,
 )
 from app.services import process_service
 
@@ -66,4 +74,57 @@ def get_process_detail(
         requirements=process.requirements,
         step_count=step_count,
         access_count=process.access_count,
+    )
+
+
+@router.get(
+    "/{process_id}/flow",
+    response_model=ProcessFullFlow,
+    dependencies=[Depends(get_current_user_payload)],
+)
+def get_process_flow(
+    process_id: UUID,
+    session: Session = Depends(get_session),
+) -> ProcessFullFlow:
+    """Retorna o fluxo completo do processo. Exige autenticacao (ADR-006).
+
+    Usa `get_current_user_payload` (decodifica o JWT) em vez de
+    `get_current_user` (SELECT no banco) pra manter o endpoint barato — aqui
+    so importa que o token e valido, nao os dados do User.
+    """
+    process = process_service.get_process_full_flow(session, process_id)
+
+    # Ordena por order_index em Python — a lista ja esta carregada (selectinload)
+    # e as tabelas tem poucos steps por processo; ORDER BY na query exigiria
+    # escopar o eager loader com .order_by(), complicacao sem payoff.
+    sorted_steps = sorted(process.steps, key=lambda s: s.order_index)
+
+    return ProcessFullFlow(
+        process=ProcessRef(id=process.id, title=process.title),
+        steps=[
+            FlowStepRead(
+                id=step.id,
+                order=step.order_index,
+                sector=SectorRef(
+                    id=step.sector.id,
+                    name=step.sector.name,
+                    acronym=step.sector.acronym,
+                ),
+                title=step.title,
+                description=step.description,
+                responsible=step.responsible,
+                estimated_time=step.estimated_time,
+                resources=[
+                    StepResourceRead(
+                        id=resource.id,
+                        type=resource.type,
+                        title=resource.title,
+                        url=resource.url,
+                        content=resource.content,
+                    )
+                    for resource in step.resources
+                ],
+            )
+            for step in sorted_steps
+        ],
     )

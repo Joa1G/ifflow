@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import String, cast, func, or_, update
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from app.core.enums import ProcessCategory, ProcessStatus
@@ -485,3 +486,33 @@ def get_process_public_detail(
     row = session.exec(statement).one()
     process, step_count = row
     return process, step_count
+
+
+def get_process_full_flow(session: Session, process_id: UUID) -> Process:
+    """Retorna um Process PUBLISHED com steps, sectors e resources carregados.
+
+    Usa `selectinload` em tres niveis para evitar N+1: uma query pra carregar
+    os steps do processo, uma pros sectors dos steps, e uma pros resources
+    dos steps. Sem eager loading, iterar `process.steps[n].resources` no
+    router dispararia 2*N queries adicionais.
+
+    Filtra por PUBLISHED aqui (nao em camada acima) pra dar o mesmo 404
+    uniforme que o detail: id inexistente e DRAFT/IN_REVIEW/ARCHIVED voltam
+    o mesmo erro, sem vazar existencia de rascunho.
+    """
+    statement = (
+        select(Process)
+        .where(Process.id == process_id)
+        .where(Process.status == ProcessStatus.PUBLISHED)
+        .options(
+            selectinload(Process.steps).selectinload(FlowStep.sector),  # type: ignore[attr-defined]
+            selectinload(Process.steps).selectinload(FlowStep.resources),  # type: ignore[attr-defined]
+        )
+    )
+    process = session.exec(statement).one_or_none()
+    if process is None:
+        raise NotFoundError(
+            "Processo nao encontrado.",
+            code="PROCESS_NOT_FOUND",
+        )
+    return process
