@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import String, cast, func, or_
 from sqlmodel import Session, select
 
 from app.core.enums import ProcessCategory, ProcessStatus
@@ -394,3 +395,52 @@ def approve_process(
         )
 
     return process
+
+
+# ---------- Listagem publica (B-19) ----------
+
+
+def list_processes_public(
+    session: Session,
+    *,
+    search: str | None = None,
+    category: ProcessCategory | None = None,
+) -> list[tuple[Process, int]]:
+    """Lista processos PUBLISHED para o servidor consultar.
+
+    Retorna tuplas `(Process, step_count)` — o count vem via outer join com
+    FlowStep para evitar N+1 (um processo pode nao ter steps ainda, dai o
+    outer join). O router converte cada tupla para ProcessPublicList.
+
+    Filtros (opcionais, combinaveis):
+    - `search`: case-insensitive em title/short_description/category (casting
+      explicito para String no ILIKE da categoria pra funcionar tanto em
+      Postgres, onde a coluna e enum nativo, quanto em SQLite, onde e varchar).
+    - `category`: filtro exato (enum).
+
+    Ordenacao: access_count desc, tie-break por title asc — processos mais
+    acessados primeiro e ordem estavel pra os que nao foram acessados.
+    """
+    step_count = func.count(FlowStep.id).label("step_count")
+    statement = (
+        select(Process, step_count)
+        .outerjoin(FlowStep, FlowStep.process_id == Process.id)
+        .where(Process.status == ProcessStatus.PUBLISHED)
+        .group_by(Process.id)
+        .order_by(Process.access_count.desc(), Process.title.asc())  # type: ignore[attr-defined]
+    )
+
+    if category is not None:
+        statement = statement.where(Process.category == category)
+
+    if search:
+        like_pattern = f"%{search}%"
+        statement = statement.where(
+            or_(
+                Process.title.ilike(like_pattern),  # type: ignore[attr-defined]
+                Process.short_description.ilike(like_pattern),  # type: ignore[attr-defined]
+                cast(Process.category, String).ilike(like_pattern),
+            )
+        )
+
+    return [(process, count) for process, count in session.exec(statement).all()]

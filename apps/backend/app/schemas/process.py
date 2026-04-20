@@ -92,6 +92,13 @@ class ProcessPublicList(BaseModel):
     access_count: int
 
 
+class ProcessesPublicListResponse(BaseModel):
+    """Envelope da resposta de GET /processes — ver CONTRACTS.md."""
+
+    processes: list[ProcessPublicList]
+    total: int
+
+
 class ProcessPublicDetail(BaseModel):
     """Detalhe basico publico — GET /processes/{id}, SEM o fluxo.
 
