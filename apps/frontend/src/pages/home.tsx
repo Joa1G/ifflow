@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { ProcessCard } from "../components/processes/process-card";
 import type { ProcessCardData } from "../components/processes/process-card";
+import { ProcessDetailModal } from "../components/processes/process-detail-modal";
 import { SearchBar } from "../components/processes/search-bar";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -90,11 +91,33 @@ function ProcessGridSkeleton() {
 
 export default function HomePage() {
   const [search, setSearch] = useState("");
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(
+    null,
+  );
   const query = useProcesses(search ? { search } : undefined);
 
   const isSearching = search.trim().length > 0;
   const total = query.data?.total ?? 0;
   const processes = query.data?.processes ?? [];
+
+  /**
+   * Intercepta o click no ProcessCard (que é um <Link>) para abrir o modal.
+   * Preserva cmd/ctrl/middle-click para quem quiser abrir a rota em nova aba
+   * — a rota `/processes/:id` continua funcional (stub por enquanto).
+   */
+  const handleCardCapture = (id: string) => (event: React.MouseEvent) => {
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    event.preventDefault();
+    setSelectedProcessId(id);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -192,7 +215,12 @@ export default function HomePage() {
             {query.isSuccess && processes.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
                 {processes.map((process) => (
-                  <ProcessCard key={process.id} process={process} />
+                  <div
+                    key={process.id}
+                    onClickCapture={handleCardCapture(process.id)}
+                  >
+                    <ProcessCard process={process} />
+                  </div>
                 ))}
               </div>
             ) : null}
@@ -218,12 +246,25 @@ export default function HomePage() {
 
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3 lg:gap-6">
               {NEW_COMER_RECOMMENDATIONS.map((process) => (
-                <ProcessCard key={process.id} process={process} />
+                <div
+                  key={process.id}
+                  onClickCapture={handleCardCapture(process.id)}
+                >
+                  <ProcessCard process={process} />
+                </div>
               ))}
             </div>
           </section>
         ) : null}
       </main>
+
+      <ProcessDetailModal
+        processId={selectedProcessId}
+        open={selectedProcessId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedProcessId(null);
+        }}
+      />
     </div>
   );
 }
