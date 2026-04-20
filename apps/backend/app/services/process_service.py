@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import String, cast, func, or_
+from sqlalchemy import String, cast, func, or_, update
 from sqlmodel import Session, select
 
 from app.core.enums import ProcessCategory, ProcessStatus
@@ -444,3 +444,44 @@ def list_processes_public(
         )
 
     return [(process, count) for process, count in session.exec(statement).all()]
+
+
+def get_process_public_detail(
+    session: Session, process_id: UUID
+) -> tuple[Process, int]:
+    """Retorna (Process, step_count) para o detalhe publico + incrementa access_count.
+
+    Incremento ATOMICO: executa `UPDATE processes SET access_count =
+    access_count + 1 WHERE id = ? AND status = PUBLISHED` numa unica query.
+    Sem SELECT + SET no app — se dois requests chegarem juntos, o banco
+    serializa os UPDATEs e nenhum incremento se perde (REQ-020).
+
+    O WHERE status=PUBLISHED cumpre dupla funcao: impede incremento em
+    DRAFT/IN_REVIEW/ARCHIVED (rowcount == 0) e serve de filtro de
+    visibilidade — mesmo tratamento 404 para processo inexistente e
+    processo nao-publicado, para nao vazar existencia de rascunhos.
+    """
+    result = session.execute(
+        update(Process)
+        .where(Process.id == process_id)
+        .where(Process.status == ProcessStatus.PUBLISHED)
+        .values(access_count=Process.access_count + 1)
+    )
+    session.commit()
+
+    if result.rowcount == 0:
+        raise NotFoundError(
+            "Processo nao encontrado.",
+            code="PROCESS_NOT_FOUND",
+        )
+
+    step_count_col = func.count(FlowStep.id).label("step_count")
+    statement = (
+        select(Process, step_count_col)
+        .outerjoin(FlowStep, FlowStep.process_id == Process.id)
+        .where(Process.id == process_id)
+        .group_by(Process.id)
+    )
+    row = session.exec(statement).one()
+    process, step_count = row
+    return process, step_count

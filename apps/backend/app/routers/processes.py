@@ -9,6 +9,8 @@ valores invalidos retornam 422 (VALIDATION_ERROR) via o handler global em
 app.main.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
@@ -16,6 +18,7 @@ from app.core.enums import ProcessCategory
 from app.database import get_session
 from app.schemas.process import (
     ProcessesPublicListResponse,
+    ProcessPublicDetail,
     ProcessPublicList,
 )
 from app.services import process_service
@@ -45,3 +48,22 @@ def list_processes(
         for process, step_count in results
     ]
     return ProcessesPublicListResponse(processes=processes, total=len(processes))
+
+
+@router.get("/{process_id}", response_model=ProcessPublicDetail)
+def get_process_detail(
+    process_id: UUID,
+    session: Session = Depends(get_session),
+) -> ProcessPublicDetail:
+    process, step_count = process_service.get_process_public_detail(session, process_id)
+    return ProcessPublicDetail(
+        id=process.id,
+        title=process.title,
+        short_description=process.short_description,
+        full_description=process.full_description,
+        category=process.category,
+        estimated_time=process.estimated_time,
+        requirements=process.requirements,
+        step_count=step_count,
+        access_count=process.access_count,
+    )
