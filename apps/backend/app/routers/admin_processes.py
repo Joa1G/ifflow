@@ -219,3 +219,30 @@ def delete_resource(
     session: Session = Depends(get_session),
 ) -> None:
     process_service.delete_step_resource(session, process_id, step_id, resource_id)
+
+
+# ---------- Fluxo de aprovacao (B-18) ----------
+
+
+@router.post("/{process_id}/submit-for-review", response_model=ProcessAdminView)
+def submit_for_review(
+    process_id: UUID,
+    _auth: TokenPayload = Depends(_require_admin),
+    session: Session = Depends(get_session),
+) -> ProcessAdminView:
+    process = process_service.submit_for_review(session, process_id)
+    return _to_admin_view(process)
+
+
+@router.post("/{process_id}/approve", response_model=ProcessAdminView)
+def approve(
+    process_id: UUID,
+    auth: TokenPayload = Depends(_require_admin),
+    session: Session = Depends(get_session),
+) -> ProcessAdminView:
+    # approved_by vem do JWT — router e o unico lugar que sabe quem e o
+    # aprovador. Nao aceitamos esse campo de body em lugar nenhum.
+    process = process_service.approve_process(
+        session, process_id, approver_id=auth.user_id
+    )
+    return _to_admin_view(process)

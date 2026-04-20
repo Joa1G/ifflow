@@ -16,6 +16,7 @@ Regras de negocio encapsuladas aqui:
   aparecem. A listagem publica (B-19) filtra so PUBLISHED.
 """
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -34,6 +35,8 @@ from app.schemas.process import (
     ProcessUpdate,
     StepResourceCreate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_process(
@@ -315,3 +318,79 @@ def delete_step_resource(
 
     session.delete(resource)
     session.commit()
+
+
+# ---------- Fluxo de aprovacao (B-18) ----------
+#
+# Transicoes permitidas:
+#   DRAFT -> IN_REVIEW    (submit_for_review)
+#   IN_REVIEW -> PUBLISHED (approve_process)
+#
+# ARCHIVED e terminal e alcancado via archive_process. Nao ha "voltar" —
+# se um admin mandou pra review por engano, precisa aprovar e depois editar
+# (ou aguardar uma feature futura de "retornar para rascunho").
+
+
+def submit_for_review(session: Session, process_id: UUID) -> Process:
+    """DRAFT -> IN_REVIEW. Qualquer outro estado atual e 409."""
+    process = get_process_admin(session, process_id)
+
+    if process.status != ProcessStatus.DRAFT:
+        raise ConflictError(
+            "Apenas processos em DRAFT podem ser enviados para revisao.",
+            code="INVALID_STATE_TRANSITION",
+            details={
+                "current_status": process.status.value,
+                "required_status": ProcessStatus.DRAFT.value,
+            },
+        )
+
+    process.status = ProcessStatus.IN_REVIEW
+    process.updated_at = datetime.now(timezone.utc)
+    session.add(process)
+    session.commit()
+    session.refresh(process)
+    return process
+
+
+def approve_process(
+    session: Session, process_id: UUID, *, approver_id: UUID
+) -> Process:
+    """IN_REVIEW -> PUBLISHED. Seta approved_by a partir do JWT.
+
+    `approver_id` e sempre o do usuario autenticado, NUNCA do body — o router
+    passa `auth.user_id`.
+
+    No MVP, um admin pode aprovar o proprio processo (decisao da equipe — ver
+    CONTRACTS.md). Registramos em log INFO quando isso acontece para servir
+    de trilha de auditoria ate termos logging estruturado (B-25).
+    """
+    process = get_process_admin(session, process_id)
+
+    if process.status != ProcessStatus.IN_REVIEW:
+        raise ConflictError(
+            "Apenas processos em IN_REVIEW podem ser aprovados.",
+            code="INVALID_STATE_TRANSITION",
+            details={
+                "current_status": process.status.value,
+                "required_status": ProcessStatus.IN_REVIEW.value,
+            },
+        )
+
+    process.status = ProcessStatus.PUBLISHED
+    process.approved_by = approver_id
+    process.updated_at = datetime.now(timezone.utc)
+    session.add(process)
+    session.commit()
+    session.refresh(process)
+
+    if approver_id == process.created_by:
+        # Auto-aprovacao permitida no MVP mas registrada. B-25 vai transformar
+        # isso em evento estruturado persistido.
+        logger.warning(
+            "process_self_approval process_id=%s approver=%s",
+            process.id,
+            approver_id,
+        )
+
+    return process
