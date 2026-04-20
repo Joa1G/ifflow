@@ -23,8 +23,17 @@ from sqlmodel import Session, select
 
 from app.core.enums import ProcessCategory, ProcessStatus
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.flow_step import FlowStep
 from app.models.process import Process
-from app.schemas.process import ProcessCreate, ProcessUpdate
+from app.models.sector import Sector
+from app.models.step_resource import StepResource
+from app.schemas.process import (
+    FlowStepCreate,
+    FlowStepUpdate,
+    ProcessCreate,
+    ProcessUpdate,
+    StepResourceCreate,
+)
 
 
 def create_process(
@@ -138,3 +147,171 @@ def archive_process(session: Session, process_id: UUID) -> Process:
     session.commit()
     session.refresh(process)
     return process
+
+
+# ---------- FlowStep (B-17) ----------
+
+
+def _ensure_process_editable(session: Session, process_id: UUID) -> Process:
+    """Garante que o processo existe e nao esta ARCHIVED.
+
+    Usado por todas as mutacoes de step/resource. Bloquear edicao de fluxo
+    em processos arquivados evita que um processo historico seja alterado
+    acidentalmente — se precisar revisar, o admin tem que desarquivar (ou
+    criar uma nova versao, conforme decisao da equipe).
+    """
+    process = get_process_admin(session, process_id)
+    if process.status == ProcessStatus.ARCHIVED:
+        raise ConflictError(
+            "Processos arquivados nao podem ter fluxo editado.",
+            code="PROCESS_NOT_EDITABLE",
+            details={"current_status": process.status.value},
+        )
+    return process
+
+
+def _load_step_in_process(
+    session: Session, process_id: UUID, step_id: UUID
+) -> FlowStep:
+    """Busca uma FlowStep validando que ela pertence ao processo do path.
+
+    Mitigacao de IDOR: se `step_id` existe mas esta em OUTRO processo, o
+    atacante nao deve conseguir editar nem descobrir isso. Respondemos 404
+    (STEP_NOT_FOUND) em vez de 403 para nao confirmar que o id existe em
+    algum lugar do sistema.
+    """
+    step = session.get(FlowStep, step_id)
+    if step is None or step.process_id != process_id:
+        raise NotFoundError(
+            "Etapa nao encontrada.",
+            code="STEP_NOT_FOUND",
+        )
+    return step
+
+
+def create_flow_step(
+    session: Session, process_id: UUID, data: FlowStepCreate
+) -> FlowStep:
+    """Adiciona uma etapa ao fluxo de um processo nao-arquivado."""
+    _ensure_process_editable(session, process_id)
+
+    # Valida sector — sem esta checagem, o insert falharia com FK error no
+    # Postgres (500 para o cliente) e passaria silenciosamente no SQLite.
+    # Melhor devolver um 404 dominio-especifico.
+    if session.get(Sector, data.sector_id) is None:
+        raise NotFoundError(
+            "Setor nao encontrado.",
+            code="SECTOR_NOT_FOUND",
+        )
+
+    step = FlowStep(
+        process_id=process_id,
+        sector_id=data.sector_id,
+        order_index=data.order,
+        title=data.title,
+        description=data.description,
+        responsible=data.responsible,
+        estimated_time=data.estimated_time,
+    )
+    session.add(step)
+    session.commit()
+    session.refresh(step)
+    return step
+
+
+def update_flow_step(
+    session: Session,
+    process_id: UUID,
+    step_id: UUID,
+    data: FlowStepUpdate,
+) -> FlowStep:
+    """Edita uma etapa. `order` permite reordenacao.
+
+    Renomeia `order` (schema) -> `order_index` (model). Valida sector novo
+    se foi enviado. IDOR barrado em _load_step_in_process.
+    """
+    _ensure_process_editable(session, process_id)
+    step = _load_step_in_process(session, process_id, step_id)
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if "sector_id" in updates and session.get(Sector, updates["sector_id"]) is None:
+        raise NotFoundError("Setor nao encontrado.", code="SECTOR_NOT_FOUND")
+
+    # Rename explicito antes do setattr loop — fazer so um "order" -> "order_index"
+    # em um lugar e mais facil de auditar do que espalhar `if field == "order"`.
+    if "order" in updates:
+        updates["order_index"] = updates.pop("order")
+
+    for field, value in updates.items():
+        setattr(step, field, value)
+
+    step.updated_at = datetime.now(timezone.utc)
+    session.add(step)
+    session.commit()
+    session.refresh(step)
+    return step
+
+
+def delete_flow_step(session: Session, process_id: UUID, step_id: UUID) -> None:
+    """Remove uma etapa. Os resources vinculados somem via cascade ORM."""
+    _ensure_process_editable(session, process_id)
+    step = _load_step_in_process(session, process_id, step_id)
+
+    session.delete(step)
+    session.commit()
+
+
+# ---------- StepResource (B-17) ----------
+
+
+def _load_resource_in_step(
+    session: Session, step_id: UUID, resource_id: UUID
+) -> StepResource:
+    """IDOR check para resources: resource tem que pertencer ao step do path."""
+    resource = session.get(StepResource, resource_id)
+    if resource is None or resource.step_id != step_id:
+        raise NotFoundError(
+            "Recurso nao encontrado.",
+            code="RESOURCE_NOT_FOUND",
+        )
+    return resource
+
+
+def create_step_resource(
+    session: Session,
+    process_id: UUID,
+    step_id: UUID,
+    data: StepResourceCreate,
+) -> StepResource:
+    """Adiciona um recurso a uma etapa. Dupla validacao IDOR (process->step)."""
+    _ensure_process_editable(session, process_id)
+    _load_step_in_process(session, process_id, step_id)
+
+    resource = StepResource(
+        step_id=step_id,
+        type=data.type,
+        title=data.title,
+        url=data.url,
+        content=data.content,
+    )
+    session.add(resource)
+    session.commit()
+    session.refresh(resource)
+    return resource
+
+
+def delete_step_resource(
+    session: Session,
+    process_id: UUID,
+    step_id: UUID,
+    resource_id: UUID,
+) -> None:
+    """Remove um recurso. Tripla validacao: process editavel, step no process,
+    resource no step."""
+    _ensure_process_editable(session, process_id)
+    _load_step_in_process(session, process_id, step_id)
+    resource = _load_resource_in_step(session, step_id, resource_id)
+
+    session.delete(resource)
+    session.commit()

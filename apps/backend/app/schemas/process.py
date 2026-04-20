@@ -158,3 +158,79 @@ class ProcessFullFlow(BaseModel):
 
     process: ProcessRef
     steps: list[FlowStepRead]
+
+
+# ---------- FlowStep (admin CRUD — B-17) ----------
+
+
+class FlowStepCreate(BaseModel):
+    """Input de criacao de etapa.
+
+    Usa `order` (campo publico) em vez de `order_index` (nome no model). O
+    service faz o rename — assim o contrato exposto ao cliente nao vaza o
+    detalhe de nome reservado SQL.
+    """
+
+    sector_id: UUID
+    order: int
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1)
+    responsible: str = Field(min_length=1, max_length=255)
+    estimated_time: str = Field(min_length=1, max_length=100)
+
+
+class FlowStepUpdate(BaseModel):
+    """PATCH de etapa — todos opcionais. `order` permite reordenacao."""
+
+    sector_id: UUID | None = None
+    order: int | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, min_length=1)
+    responsible: str | None = Field(default=None, min_length=1, max_length=255)
+    estimated_time: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class FlowStepAdminView(BaseModel):
+    """Retorno admin de uma etapa — inclui process_id para referencia cruzada.
+
+    Nao inclui os resources (sao gerenciados por endpoints separados). Para
+    ver etapas + resources juntos, o admin usa o GET /admin/processes/{id}
+    (B-15) ou o GET /flow publico (B-21).
+    """
+
+    id: UUID
+    process_id: UUID
+    sector_id: UUID
+    order: int
+    title: str
+    description: str
+    responsible: str
+    estimated_time: str
+
+
+# ---------- StepResource (admin CRUD — B-17) ----------
+
+
+class StepResourceCreate(BaseModel):
+    """Input de criacao de recurso.
+
+    `url` e `content` sao ambos opcionais — a combinacao valida depende do
+    `type` mas a regra nao esta sendo enforcada aqui no MVP (admins cuidam
+    disso manualmente). Se virar problema, promovemos para validator.
+    """
+
+    type: ResourceType
+    title: str = Field(min_length=1, max_length=255)
+    url: str | None = Field(default=None, max_length=2048)
+    content: str | None = None
+
+
+class StepResourceAdminView(BaseModel):
+    """Retorno admin de um recurso — inclui step_id para referencia cruzada."""
+
+    id: UUID
+    step_id: UUID
+    type: ResourceType
+    title: str
+    url: str | None
+    content: str | None
