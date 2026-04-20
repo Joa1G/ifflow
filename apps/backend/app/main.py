@@ -10,6 +10,7 @@ from slowapi.middleware import SlowAPIMiddleware
 # obrigatórias estejam faltando.
 from app.config import settings
 from app.core.exceptions import IFFLOWError
+from app.routers import admin_processes as admin_processes_router
 from app.routers import admin_users as admin_users_router
 from app.routers import auth as auth_router
 from app.routers import super_admin_users as super_admin_users_router
@@ -103,6 +104,7 @@ async def validation_exception_handler(
 app.include_router(auth_router.router)
 app.include_router(admin_users_router.router)
 app.include_router(super_admin_users_router.router)
+app.include_router(admin_processes_router.router)
 
 
 @app.get("/health")
