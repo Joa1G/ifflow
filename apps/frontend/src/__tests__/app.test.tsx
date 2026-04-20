@@ -65,7 +65,6 @@ const renderAt = (path: string) =>
 
 describe("<App /> — rotas públicas", () => {
   const stubRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/", "HomePage"],
     ["/processes/abc-123", "ProcessDetailPage"],
     ["/forbidden", "ForbiddenPage"],
     ["/rota-inexistente", "NotFoundPage"],
@@ -74,6 +73,23 @@ describe("<App /> — rotas públicas", () => {
   it.each(stubRoutes)("renderiza %s → %s", (path, expected) => {
     renderAt(path);
     expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("renderiza / → HomePage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
+    );
+    renderAt("/");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Consulte qualquer processo da PROAD/i,
+        }),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("renderiza /login → LoginPage (real)", () => {
