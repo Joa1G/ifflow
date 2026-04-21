@@ -14,6 +14,7 @@ from app.routers import admin_processes as admin_processes_router
 from app.routers import admin_users as admin_users_router
 from app.routers import auth as auth_router
 from app.routers import processes as processes_router
+from app.routers import progress as progress_router
 from app.routers import super_admin_users as super_admin_users_router
 
 app = FastAPI(
@@ -107,6 +108,7 @@ app.include_router(admin_users_router.router)
 app.include_router(super_admin_users_router.router)
 app.include_router(admin_processes_router.router)
 app.include_router(processes_router.router)
+app.include_router(progress_router.router)
 
 
 @app.get("/health")

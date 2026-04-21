@@ -6,3 +6,4 @@ from app.models.process import Process  # noqa: F401
 from app.models.sector import Sector  # noqa: F401
 from app.models.step_resource import StepResource  # noqa: F401
 from app.models.user import User  # noqa: F401
+from app.models.user_progress import UserProgress  # noqa: F401

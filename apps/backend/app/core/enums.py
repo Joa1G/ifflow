@@ -46,3 +46,9 @@ class ResourceType(str, Enum):
     LEGAL_BASIS = "LEGAL_BASIS"
     POP = "POP"
     LINK = "LINK"
+
+
+class StepStatus(str, Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
