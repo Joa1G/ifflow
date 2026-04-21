@@ -65,7 +65,6 @@ const renderAt = (path: string) =>
 
 describe("<App /> — rotas públicas", () => {
   const stubRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/", "HomePage"],
     ["/processes/abc-123", "ProcessDetailPage"],
     ["/forbidden", "ForbiddenPage"],
     ["/rota-inexistente", "NotFoundPage"],
@@ -74,6 +73,79 @@ describe("<App /> — rotas públicas", () => {
   it.each(stubRoutes)("renderiza %s → %s", (path, expected) => {
     renderAt(path);
     expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it("renderiza / → HomePage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
+    );
+    renderAt("/");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Consulte qualquer processo da PROAD/i,
+        }),
+      ).toBeInTheDocument(),
+    );
+    // Sem processos publicados, a seção "Novo na PROAD?" não aparece.
+    expect(
+      screen.queryByRole("heading", { level: 2, name: /Novo na PROAD/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("HomePage usa IDs reais nas recomendações (sem placeholders UUID zero)", async () => {
+    server.use(
+      http.get(`${BASE}/processes`, () =>
+        HttpResponse.json({
+          processes: [
+            {
+              id: "aaaaaaaa-1111-1111-1111-111111111111",
+              title: "Solicitação de Capacitação",
+              short_description: "Afastamento para estudos.",
+              category: "RH",
+              estimated_time: "30 dias",
+              step_count: 8,
+              access_count: 10,
+            },
+            {
+              id: "bbbbbbbb-2222-2222-2222-222222222222",
+              title: "Pedido de diárias",
+              short_description: "Viagens a serviço.",
+              category: "FINANCEIRO",
+              estimated_time: "15 dias",
+              step_count: 6,
+              access_count: 5,
+            },
+            {
+              id: "cccccccc-3333-3333-3333-333333333333",
+              title: "Aquisição de material",
+              short_description: "Compra por dispensa.",
+              category: "MATERIAIS",
+              estimated_time: "45 dias",
+              step_count: 10,
+              access_count: 2,
+            },
+          ],
+          total: 3,
+        }),
+      ),
+    );
+    renderAt("/");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 2, name: /Novo na PROAD/i }),
+      ).toBeInTheDocument(),
+    );
+
+    // Garantia de regressão: nenhum link da home aponta para o UUID
+    // placeholder antigo (bug F-15 original que causava 404 no modal).
+    for (const link of screen.getAllByRole("link")) {
+      const href = link.getAttribute("href") ?? "";
+      expect(href).not.toMatch(/00000000-0000-0000-0000-00000000000\d/);
+    }
   });
 
   it("renderiza /login → LoginPage (real)", () => {
@@ -151,7 +223,6 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
   });
 
   const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/processes/abc-123/flow", "ProcessFlowPage"],
     ["/admin/processes", "AdminProcessesPage"],
     ["/admin/processes/new", "ProcessEditorPage"],
     ["/admin/processes/xyz/edit", "ProcessEditorPage"],
@@ -175,6 +246,23 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { level: 1, name: "Cadastros pendentes" }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("renderiza /processes/:id/flow → ProcessFlowPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes/abc-123/flow`, () =>
+        HttpResponse.json({
+          process: { id: "abc-123", title: "Solicitação de Capacitação" },
+          steps: [],
+        }),
+      ),
+    );
+    renderAt("/processes/abc-123/flow");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Fluxo:/i }),
       ).toBeInTheDocument(),
     );
   });
