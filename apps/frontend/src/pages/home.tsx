@@ -1,5 +1,5 @@
 import { AlertCircle, Inbox } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ProcessCard } from "../components/processes/process-card";
 import type { ProcessCardData } from "../components/processes/process-card";
@@ -12,39 +12,43 @@ import { Skeleton } from "../components/ui/skeleton";
 import { useProcesses } from "../hooks/use-processes";
 
 /**
- * Cards curados da seção "Novo na PROAD?". São recomendações institucionais
- * baseadas nos pedidos mais frequentes de servidores recém-chegados; os IDs
- * reais serão definidos pelo stakeholder (ver F-15 — hardcoded no MVP).
+ * Ordem de prioridade das categorias mais relevantes para quem acaba de
+ * chegar à PROAD (capacitação/RH, diárias/FINANCEIRO). Se não houver
+ * processos suficientes nessas categorias, completamos com os demais
+ * publicados para nunca renderizar menos de `NEWCOMER_TARGET_SIZE` cards
+ * — evita a seção aparecer "quebrada" com um ou dois slots.
  */
-const NEW_COMER_RECOMMENDATIONS: ReadonlyArray<ProcessCardData> = [
-  {
-    id: "00000000-0000-0000-0000-000000000001",
-    title: "Solicitação de capacitação",
-    short_description:
-      "Afastamento para cursos, especializações e outras ações de desenvolvimento.",
-    category: "RH",
-    estimated_time: "Até 30 dias",
-    step_count: 8,
-  },
-  {
-    id: "00000000-0000-0000-0000-000000000002",
-    title: "Pedido de diárias e passagens",
-    short_description:
-      "Autorização e prestação de contas de viagens a serviço fora da sede.",
-    category: "FINANCEIRO",
-    estimated_time: "Até 15 dias",
-    step_count: 6,
-  },
-  {
-    id: "00000000-0000-0000-0000-000000000003",
-    title: "Concessão de férias",
-    short_description:
-      "Marcação, interrupção e remarcação do período de férias regulamentares.",
-    category: "RH",
-    estimated_time: "Até 10 dias",
-    step_count: 5,
-  },
-];
+const NEWCOMER_PRIORITY_CATEGORIES: ReadonlyArray<ProcessCardData["category"]> =
+  ["RH", "FINANCEIRO"];
+const NEWCOMER_TARGET_SIZE = 3;
+
+function pickNewcomerRecommendations(
+  processes: ReadonlyArray<ProcessCardData>,
+): ProcessCardData[] {
+  if (processes.length === 0) return [];
+
+  const picked: ProcessCardData[] = [];
+  const usedIds = new Set<string>();
+
+  for (const category of NEWCOMER_PRIORITY_CATEGORIES) {
+    const candidate = processes.find(
+      (p) => p.category === category && !usedIds.has(p.id),
+    );
+    if (candidate) {
+      picked.push(candidate);
+      usedIds.add(candidate.id);
+    }
+  }
+
+  for (const process of processes) {
+    if (picked.length >= NEWCOMER_TARGET_SIZE) break;
+    if (usedIds.has(process.id)) continue;
+    picked.push(process);
+    usedIds.add(process.id);
+  }
+
+  return picked;
+}
 
 /**
  * Eyebrow tipográfico reusável: régua vertical verde + texto institucional.
@@ -99,6 +103,10 @@ export default function HomePage() {
   const isSearching = search.trim().length > 0;
   const total = query.data?.total ?? 0;
   const processes = query.data?.processes ?? [];
+  const newcomerRecommendations = useMemo(
+    () => pickNewcomerRecommendations(query.data?.processes ?? []),
+    [query.data?.processes],
+  );
 
   /**
    * Intercepta o click no ProcessCard (que é um <Link>) para abrir o modal.
@@ -227,7 +235,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {!isSearching ? (
+        {!isSearching && newcomerRecommendations.length > 0 ? (
           <section aria-labelledby="newcomers-heading" className="mt-16">
             <div className="max-w-2xl space-y-2">
               <EyebrowRule label="Para começar" tone="bold" />
@@ -238,14 +246,14 @@ export default function HomePage() {
                 Novo na PROAD? Comece por aqui.
               </h2>
               <p className="text-sm text-muted-foreground">
-                Três processos que todo servidor recém-chegado costuma precisar
+                Processos que todo servidor recém-chegado costuma precisar
                 consultar nos primeiros meses.
               </p>
             </div>
             <Separator className="mt-4" />
 
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3 lg:gap-6">
-              {NEW_COMER_RECOMMENDATIONS.map((process) => (
+              {newcomerRecommendations.map((process) => (
                 <div
                   key={process.id}
                   onClickCapture={handleCardCapture(process.id)}
