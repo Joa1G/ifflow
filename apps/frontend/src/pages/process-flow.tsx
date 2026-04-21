@@ -1,10 +1,15 @@
 import { AlertCircle, ArrowLeft, Inbox } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { FlowViewer } from "../components/flow/flow-viewer";
+import { StepDetailModal } from "../components/flow/step-detail-modal";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Skeleton } from "../components/ui/skeleton";
 import { useProcessFlow } from "../hooks/use-processes";
+import type { components } from "../types/api";
+
+type FlowStepRead = components["schemas"]["FlowStepRead"];
 
 function FlowSkeleton() {
   return (
@@ -28,6 +33,7 @@ function FlowSkeleton() {
 export default function ProcessFlowPage() {
   const { id } = useParams<{ id: string }>();
   const query = useProcessFlow(id);
+  const [selectedStep, setSelectedStep] = useState<FlowStepRead | null>(null);
 
   return (
     <main className="container mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-12">
@@ -88,9 +94,17 @@ export default function ProcessFlowPage() {
 
       {query.isSuccess && query.data.steps.length > 0 ? (
         <section aria-label="Fluxograma do processo" className="mt-10">
-          <FlowViewer flow={query.data} />
+          <FlowViewer flow={query.data} onSelectStep={setSelectedStep} />
         </section>
       ) : null}
+
+      <StepDetailModal
+        step={selectedStep}
+        open={selectedStep !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedStep(null);
+        }}
+      />
 
       <p
         aria-hidden
