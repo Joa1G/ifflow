@@ -167,7 +167,6 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
   });
 
   const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/processes/abc-123/flow", "ProcessFlowPage"],
     ["/admin/processes", "AdminProcessesPage"],
     ["/admin/processes/new", "ProcessEditorPage"],
     ["/admin/processes/xyz/edit", "ProcessEditorPage"],
@@ -191,6 +190,23 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { level: 1, name: "Cadastros pendentes" }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("renderiza /processes/:id/flow → ProcessFlowPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes/abc-123/flow`, () =>
+        HttpResponse.json({
+          process: { id: "abc-123", title: "Solicitação de Capacitação" },
+          steps: [],
+        }),
+      ),
+    );
+    renderAt("/processes/abc-123/flow");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Fluxo:/i }),
       ).toBeInTheDocument(),
     );
   });
