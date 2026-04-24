@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { FlowViewer } from "../components/flow/flow-viewer";
+import { ProgressSummary } from "../components/flow/progress-summary";
 import { StatusSelector } from "../components/flow/status-selector";
 import { StepDetailModal } from "../components/flow/step-detail-modal";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -120,6 +121,17 @@ export default function ProcessFlowPage() {
         <AlertTitle>Checklist pessoal</AlertTitle>
         <AlertDescription>{CHECKLIST_DISCLAIMER}</AlertDescription>
       </Alert>
+
+      {flowQuery.isSuccess && flowQuery.data.steps.length > 0 ? (
+        <div className="mt-6">
+          <ProgressSummary
+            totalSteps={flowQuery.data.steps.length}
+            stepStatuses={stepStatuses}
+            lastUpdated={progressQuery.data?.last_updated ?? null}
+            isLoading={progressQuery.isPending}
+          />
+        </div>
+      ) : null}
 
       {flowQuery.isPending ? <FlowSkeleton /> : null}
 
