@@ -47,6 +47,24 @@ def list_pending_users(session: Session) -> list[User]:
     return list(session.exec(statement).all())
 
 
+def list_approved_users(session: Session) -> list[User]:
+    """Retorna todos os usuarios com status APPROVED, em ordem alfabetica.
+
+    Usado pela tela de gestao de papeis (F-24) — o super_admin precisa ver a
+    populacao atual com suas roles para decidir quem promover/rebaixar. Nao
+    inclui PENDING nem REJECTED: esses sao dominio do endpoint de moderacao
+    (/admin/users/pending). Includes the caller's own row — a decisao de
+    bloquear self-demote mora no endpoint de demote, nao aqui.
+
+    Ordenacao por `name` ASC e case-insensitive: em Portugues pt-BR isso evita
+    que "aline" aparecer depois de "Zulmira" so porque esta em minusculas.
+    """
+    statement = (
+        select(User).where(User.status == UserStatus.APPROVED).order_by(User.name.asc())  # type: ignore[attr-defined]
+    )
+    return list(session.exec(statement).all())
+
+
 def _load_pending_target(session: Session, user_id: UUID, moderator_id: UUID) -> User:
     """Centraliza as checagens comuns a approve/reject.
 
@@ -172,7 +190,7 @@ def promote_to_admin(session: Session, user_id: UUID, requester_id: UUID) -> Use
     session.commit()
     session.refresh(user)
 
-    # Auditoria leve — B-25 substituira por logging estruturado + trilha persistente.
+    # Auditoria leve — B-27 substituira por logging estruturado + trilha persistente.
     logger.info(
         "role_change promote requester=%s target=%s new_role=ADMIN",
         requester_id,
