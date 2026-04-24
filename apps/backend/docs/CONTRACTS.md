@@ -262,6 +262,41 @@ Exige role `SUPER_ADMIN`. Promove um USER para ADMIN.
 
 Exige role `SUPER_ADMIN`. Rebaixa um ADMIN para USER. Não permite rebaixar a si mesmo.
 
+## Endpoints — Setores
+
+### GET /sectors
+
+Lista os setores institucionais cadastrados, em ordem alfabética por `name`.
+Usado pelo editor admin de processos (F-22) para popular o Select de
+`sector_id` em cada etapa, e pelo fluxograma público para renderizar as
+swimlanes com o nome completo + sigla.
+
+**Autenticação:** exige token válido (qualquer role — USER, ADMIN ou
+SUPER_ADMIN). Não é informação sensível dentro do portal.
+
+**Response 200:**
+```json
+{
+  "sectors": [
+    {
+      "id": "uuid",
+      "name": "Diretoria de Administração e Planejamento",
+      "acronym": "DAP"
+    },
+    {
+      "id": "uuid",
+      "name": "Pró-Reitoria de Administração",
+      "acronym": "PROAD"
+    }
+  ],
+  "total": 2
+}
+```
+
+O catálogo é gerenciado via seed (`python -m app.scripts.seed_sectors`),
+não há endpoint de create/update/delete no MVP. Seed é idempotente por
+`acronym` — reexecutar não duplica registros.
+
 ## Endpoints — Processos (público)
 
 ### GET /processes

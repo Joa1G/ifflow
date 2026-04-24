@@ -190,7 +190,7 @@ def promote_to_admin(session: Session, user_id: UUID, requester_id: UUID) -> Use
     session.commit()
     session.refresh(user)
 
-    # Auditoria leve — B-25 substituira por logging estruturado + trilha persistente.
+    # Auditoria leve — B-27 substituira por logging estruturado + trilha persistente.
     logger.info(
         "role_change promote requester=%s target=%s new_role=ADMIN",
         requester_id,

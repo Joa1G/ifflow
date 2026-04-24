@@ -365,7 +365,7 @@ def approve_process(
 
     No MVP, um admin pode aprovar o proprio processo (decisao da equipe — ver
     CONTRACTS.md). Registramos em log INFO quando isso acontece para servir
-    de trilha de auditoria ate termos logging estruturado (B-25).
+    de trilha de auditoria ate termos logging estruturado (B-27).
     """
     process = get_process_admin(session, process_id)
 
@@ -387,7 +387,7 @@ def approve_process(
     session.refresh(process)
 
     if approver_id == process.created_by:
-        # Auto-aprovacao permitida no MVP mas registrada. B-25 vai transformar
+        # Auto-aprovacao permitida no MVP mas registrada. B-27 vai transformar
         # isso em evento estruturado persistido.
         logger.warning(
             "process_self_approval process_id=%s approver=%s",
