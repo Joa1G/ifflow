@@ -786,7 +786,39 @@ REQ mapeados: REQ-030
 
 ## Sprint 5 — Polimento e deploy
 
-### B-25 — Logs e auditoria
+### B-25 — Endpoint GET /super-admin/users (listagem para gestão de papéis)
+Status: TODO
+Depende de: B-13
+REQ mapeados: REQ-007
+
+**Objetivo:** B-13 só expôs `POST /super-admin/users/{id}/promote` e `.../demote`, mas sem um endpoint de listagem o frontend (F-24) não tem como exibir os usuários aprovados com seus papéis atuais para o super_admin escolher. Esta task preenche essa lacuna — identificada ao tentar implementar F-24 e faltar o GET.
+
+**Critério de pronto:**
+- [ ] `GET /super-admin/users` exige role `SUPER_ADMIN` (ADMIN e USER recebem 403, sem token recebe 401)
+- [ ] Retorna usuários com status `APPROVED`, ordenados alfabeticamente por `name`
+- [ ] Cada item contém: `id`, `name`, `email`, `siape`, `sector`, `role`, `created_at`
+- [ ] Formato do envelope: `{ "users": [...], "total": N }` (consistente com `/admin/users/pending`)
+- [ ] Nunca retorna `password_hash` ou outros campos internos
+- [ ] Documentado em `docs/CONTRACTS.md` junto ao bloco de `/super-admin/users/*`
+
+**Arquivos permitidos:** `app/routers/super_admin_users.py`, `app/services/user_service.py` (nova função `list_approved_users`), `app/schemas/user.py` (schemas `UserRoleManagementView` e `UsersRoleManagementListResponse` — ou reuso do que já existe), `tests/test_super_admin_users.py`, `docs/CONTRACTS.md`
+
+**Testes obrigatórios:**
+- SUPER_ADMIN lista → 200 com os APPROVED em ordem alfabética
+- ADMIN tenta → 403 `FORBIDDEN`
+- USER tenta → 403 `FORBIDDEN`
+- Sem token → 401 `UNAUTHENTICATED`
+- Usuários `PENDING` ou `REJECTED` não aparecem
+- Schema de resposta não contém `password_hash`
+
+**Checklist de segurança:**
+- [ ] Dependency `require_role(SUPER_ADMIN)` — nunca checar role manualmente no handler
+- [ ] Schema Pydantic explícito (não serializar o model SQLModel diretamente)
+- [ ] Query parametrizada (sem concatenação de strings)
+
+---
+
+### B-26 — Logs e auditoria
 Status: TODO
 Depende de: —
 REQ mapeados: REQ-071, REQ-073
@@ -810,7 +842,7 @@ REQ mapeados: REQ-071, REQ-073
 
 ---
 
-### B-26 — CORS, headers de segurança, configuração de produção
+### B-27 — CORS, headers de segurança, configuração de produção
 Status: TODO
 Depende de: —
 REQ mapeados: REQ-071, REQ-073
@@ -834,9 +866,9 @@ REQ mapeados: REQ-071, REQ-073
 
 ---
 
-### B-27 — Deploy do MVP (Railway ou Render)
+### B-28 — Deploy do MVP (Railway ou Render)
 Status: TODO
-Depende de: B-26, B-25
+Depende de: B-27, B-26
 REQ mapeados: —
 
 **Objetivo:** Backend acessível publicamente para o frontend consumir.
@@ -882,7 +914,9 @@ B-00 → B-01 → B-02 → B-03 → B-04 → B-05 → B-06
                               ↓
                        B-22 → B-23 → B-24
                               ↓
-                       B-25, B-26 → B-27
+                       B-25 (GET /super-admin/users)
+                              ↓
+                       B-26, B-27 → B-28
 ```
 
 ## Tasks que podem rodar em paralelo
@@ -894,4 +928,4 @@ Dentro de um sprint, estas podem ser atribuídas a pessoas diferentes:
 - **Sprint 2**: B-12 e B-14 em paralelo; depois B-15 e B-13 em paralelo; depois B-16, B-17, B-18 em sequência
 - **Sprint 3**: B-19 → B-20 → B-21 (cadeia, difícil paralelizar)
 - **Sprint 4**: B-22 → B-23 → B-24 (cadeia)
-- **Sprint 5**: B-25 e B-26 em paralelo; B-27 no final
+- **Sprint 5**: B-25 (gating para F-24 no frontend); B-26 e B-27 em paralelo depois; B-28 no final

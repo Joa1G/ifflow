@@ -753,9 +753,9 @@ REQ mapeados: REQ-041, REQ-042, REQ-043
 ---
 
 ### F-24 — Tela super_admin: gestão de papéis
-Status: TODO
+Status: BLOCKED (depende do B-25 para listar os usuários APPROVED)
 Depende de: F-13
-Requires backend: B-13
+Requires backend: B-13, B-25
 REQ mapeados: REQ-007
 
 **Objetivo:** Super admin promove/rebaixa admins.
