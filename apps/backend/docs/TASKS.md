@@ -818,7 +818,37 @@ REQ mapeados: REQ-007
 
 ---
 
-### B-26 — Logs e auditoria
+### B-26 — Endpoint GET /sectors + seed inicial de setores
+Status: TODO
+Depende de: B-14
+REQ mapeados: REQ-040, REQ-041
+
+**Objetivo:** O editor admin de processos (F-22) precisa listar setores disponíveis para popular o Select de `sector_id` em cada etapa. Hoje não há endpoint GET para a tabela `sectors` e nem seed — a tabela fica vazia após migrations. Sem isso, a criação de etapas é inviável no frontend. Esta task entrega o endpoint de leitura e o seed dos setores reais da PROAD/IFAM.
+
+**Critério de pronto:**
+- [ ] `GET /sectors` retorna todos os setores cadastrados, ordem alfabética por `name`
+- [ ] Exige apenas autenticação (role `USER`+) — é informação institucional pública dentro do portal; quem cria processos é ADMIN, quem vê o fluxo é USER
+- [ ] Resposta no formato `{ "sectors": [...], "total": N }` — cada item: `id`, `name`, `acronym`
+- [ ] Script `app/scripts/seed_sectors.py` (idempotente, pode ser re-executado) com os setores da PROAD validados com o stakeholder (mínimo: PROAD, DGP, DAP, DCF, DMP — a equipe confirma a lista exata)
+- [ ] Seed documentado no README de backend ao lado do `seed_super_admin`
+- [ ] Endpoint documentado em `docs/CONTRACTS.md`
+
+**Arquivos permitidos:** `app/routers/sectors.py` (novo), `app/services/sector_service.py` (novo), `app/schemas/sector.py` (novo, com `SectorRead` e `SectorsListResponse`), `app/scripts/seed_sectors.py` (novo), `app/main.py` (incluir o router), `tests/test_sectors.py`, `docs/CONTRACTS.md`, `README.md` (ou equivalente do backend)
+
+**Testes obrigatórios:**
+- USER autenticado lista → 200 com setores em ordem alfabética
+- Sem token → 401 `UNAUTHENTICATED`
+- Tabela vazia → 200 `{sectors: [], total: 0}` (empty state válido)
+- Seed idempotente: rodar 2x não duplica linhas (teste de unicidade por `acronym`)
+
+**Checklist de segurança:**
+- [ ] Schema Pydantic explícito (sem timestamps ou campos internos desnecessários)
+- [ ] Seed não hardcoda IDs — deixa o banco gerar UUIDs
+- [ ] Script de seed nunca roda em produção sem passo manual explícito
+
+---
+
+### B-27 — Logs e auditoria
 Status: TODO
 Depende de: —
 REQ mapeados: REQ-071, REQ-073
@@ -842,7 +872,7 @@ REQ mapeados: REQ-071, REQ-073
 
 ---
 
-### B-27 — CORS, headers de segurança, configuração de produção
+### B-28 — CORS, headers de segurança, configuração de produção
 Status: TODO
 Depende de: —
 REQ mapeados: REQ-071, REQ-073
@@ -866,9 +896,9 @@ REQ mapeados: REQ-071, REQ-073
 
 ---
 
-### B-28 — Deploy do MVP (Railway ou Render)
+### B-29 — Deploy do MVP (Railway ou Render)
 Status: TODO
-Depende de: B-27, B-26
+Depende de: B-28, B-27
 REQ mapeados: —
 
 **Objetivo:** Backend acessível publicamente para o frontend consumir.
@@ -914,9 +944,9 @@ B-00 → B-01 → B-02 → B-03 → B-04 → B-05 → B-06
                               ↓
                        B-22 → B-23 → B-24
                               ↓
-                       B-25 (GET /super-admin/users)
+                       B-25 (GET /super-admin/users), B-26 (GET /sectors)
                               ↓
-                       B-26, B-27 → B-28
+                       B-27, B-28 → B-29
 ```
 
 ## Tasks que podem rodar em paralelo
@@ -928,4 +958,4 @@ Dentro de um sprint, estas podem ser atribuídas a pessoas diferentes:
 - **Sprint 2**: B-12 e B-14 em paralelo; depois B-15 e B-13 em paralelo; depois B-16, B-17, B-18 em sequência
 - **Sprint 3**: B-19 → B-20 → B-21 (cadeia, difícil paralelizar)
 - **Sprint 4**: B-22 → B-23 → B-24 (cadeia)
-- **Sprint 5**: B-25 (gating para F-24 no frontend); B-26 e B-27 em paralelo depois; B-28 no final
+- **Sprint 5**: B-25 (gating para F-24) e B-26 (gating para F-22) em paralelo — independentes; B-27 e B-28 em paralelo depois; B-29 no final

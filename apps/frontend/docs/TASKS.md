@@ -697,9 +697,9 @@ REQ mapeados: REQ-033
 ## Sprint 5 — Admin de processos + polimento + deploy
 
 ### F-22 — Editor de processo (admin)
-Status: TODO
+Status: BLOCKED (depende do B-26 para o Select de setor nas etapas)
 Depende de: F-13
-Requires backend: B-16, B-17
+Requires backend: B-16, B-17, B-26
 REQ mapeados: REQ-040, REQ-041, REQ-044
 
 **Objetivo:** Admin cria/edita processos via formulário. **Não é editor visual** — é formulário simples.
