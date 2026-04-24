@@ -258,6 +258,17 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
           steps: [],
         }),
       ),
+      // A página agora também consome o progresso do usuário (F-20) para
+      // renderizar o seletor de status nos cards — precisa do handler aqui
+      // ou o MSW aborta com `onUnhandledRequest: "error"`.
+      http.get(`${BASE}/progress/abc-123`, () =>
+        HttpResponse.json({
+          id: "prog-1",
+          process_id: "abc-123",
+          step_statuses: {},
+          last_updated: "2026-04-21T10:00:00Z",
+        }),
+      ),
     );
     renderAt("/processes/abc-123/flow");
     await waitFor(() =>

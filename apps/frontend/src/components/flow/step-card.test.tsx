@@ -30,6 +30,9 @@ describe("<StepCard />", () => {
       screen.getByText(/Responsável: Servidor interessado/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Prazo: 1 dia útil/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("article", { name: /Etapa 3: Autuar processo no SIPAC/i }),
+    ).toBeInTheDocument();
   });
 
   it("mantém o zero-padding no número mesmo com ordem acima de 9", () => {
@@ -37,12 +40,14 @@ describe("<StepCard />", () => {
     expect(screen.getByText("12")).toBeInTheDocument();
   });
 
-  it("chama onSelect com o step ao clicar", () => {
+  it("chama onSelect com o step ao clicar em 'Ver detalhes'", () => {
     const onSelect = vi.fn();
     render(<StepCard step={baseStep} onSelect={onSelect} />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Etapa 3: Autuar processo no SIPAC/i }),
+      screen.getByRole("button", {
+        name: /Ver detalhes da etapa 3: Autuar processo no SIPAC/i,
+      }),
     );
 
     expect(onSelect).toHaveBeenCalledTimes(1);
@@ -52,7 +57,7 @@ describe("<StepCard />", () => {
   it("não quebra quando onSelect não é fornecido", () => {
     render(<StepCard step={baseStep} />);
     fireEvent.click(
-      screen.getByRole("button", { name: /Etapa 3: Autuar processo no SIPAC/i }),
+      screen.getByRole("button", { name: /Ver detalhes da etapa 3/i }),
     );
   });
 
@@ -61,5 +66,15 @@ describe("<StepCard />", () => {
     expect(
       screen.queryByText("Abertura do processo eletrônico pelo servidor."),
     ).not.toBeInTheDocument();
+  });
+
+  it("renderiza o statusControl quando fornecido", () => {
+    render(
+      <StepCard
+        step={baseStep}
+        statusControl={<span data-testid="slot">SELECT</span>}
+      />,
+    );
+    expect(screen.getByTestId("slot")).toBeInTheDocument();
   });
 });
