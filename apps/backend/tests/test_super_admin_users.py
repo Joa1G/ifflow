@@ -352,3 +352,205 @@ def test_demote_sem_auth_retorna_401(client: TestClient, session: Session):
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+# ---------- GET /super-admin/users (B-25) ----------
+#
+# Endpoint de listagem que destrava F-24 no frontend (gestao de papeis).
+# Diferente do /admin/users/pending (moderacao), este lista SOMENTE os APPROVED
+# com a role atual, para o super_admin escolher quem promover/rebaixar.
+
+
+def test_list_users_como_super_admin_retorna_somente_approved(
+    client: TestClient, session: Session
+):
+    super_admin = _create_user(
+        session,
+        email="super.list@ifam.edu.br",
+        role=UserRole.SUPER_ADMIN,
+        name="Alice Super",
+    )
+    _create_user(
+        session,
+        email="aprovado.list@ifam.edu.br",
+        name="Bento Aprovado",
+    )
+    _create_user(
+        session,
+        email="adm.list@ifam.edu.br",
+        role=UserRole.ADMIN,
+        name="Carla Admin",
+    )
+    _create_user(
+        session,
+        email="pendente.list@ifam.edu.br",
+        status=UserStatus.PENDING,
+        name="Derick Pendente",
+    )
+    _create_user(
+        session,
+        email="rejeitado.list@ifam.edu.br",
+        status=UserStatus.REJECTED,
+        name="Eva Rejeitada",
+    )
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(super_admin),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    returned_emails = {u["email"] for u in body["users"]}
+
+    # Usuarios PENDING e REJECTED nao aparecem.
+    assert "pendente.list@ifam.edu.br" not in returned_emails
+    assert "rejeitado.list@ifam.edu.br" not in returned_emails
+
+    # Os tres APPROVED aparecem (incluindo o proprio super_admin que faz a
+    # chamada — listagem e informativa, o frontend desabilita a acao em self).
+    assert returned_emails == {
+        "super.list@ifam.edu.br",
+        "aprovado.list@ifam.edu.br",
+        "adm.list@ifam.edu.br",
+    }
+    assert body["total"] == 3
+
+
+def test_list_users_ordem_alfabetica_por_name(client: TestClient, session: Session):
+    super_admin = _create_user(
+        session,
+        email="super.order@ifam.edu.br",
+        role=UserRole.SUPER_ADMIN,
+        name="Zulmira Super",
+    )
+    _create_user(session, email="b@ifam.edu.br", name="Bruno Teste")
+    _create_user(session, email="a@ifam.edu.br", name="Amanda Teste")
+    _create_user(session, email="c@ifam.edu.br", name="Cesar Teste")
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(super_admin),
+    )
+
+    assert response.status_code == 200
+    names = [u["name"] for u in response.json()["users"]]
+    assert names == ["Amanda Teste", "Bruno Teste", "Cesar Teste", "Zulmira Super"]
+
+
+def test_list_users_retorna_role_atual_de_cada_usuario(
+    client: TestClient, session: Session
+):
+    super_admin = _create_user(
+        session,
+        email="super.role@ifam.edu.br",
+        role=UserRole.SUPER_ADMIN,
+        name="Super Role",
+    )
+    admin = _create_user(
+        session,
+        email="adm.role@ifam.edu.br",
+        role=UserRole.ADMIN,
+        name="Aaron Admin",
+    )
+    comum = _create_user(
+        session,
+        email="comum.role@ifam.edu.br",
+        role=UserRole.USER,
+        name="Artur Comum",
+    )
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(super_admin),
+    )
+
+    assert response.status_code == 200
+    by_email = {u["email"]: u for u in response.json()["users"]}
+    assert by_email[super_admin.email]["role"] == UserRole.SUPER_ADMIN.value
+    assert by_email[admin.email]["role"] == UserRole.ADMIN.value
+    assert by_email[comum.email]["role"] == UserRole.USER.value
+
+
+def test_list_users_como_admin_retorna_403(client: TestClient, session: Session):
+    """ADMIN nao pode listar — endpoint e SUPER_ADMIN apenas (a gestao de
+    papeis e responsabilidade exclusiva do super)."""
+    admin = _create_user(
+        session,
+        email="admin.list@ifam.edu.br",
+        role=UserRole.ADMIN,
+    )
+    _create_user(session, email="qualquer.list@ifam.edu.br")
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_list_users_como_user_comum_retorna_403(client: TestClient, session: Session):
+    comum = _create_user(session, email="comum.list@ifam.edu.br")
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(comum),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_list_users_sem_auth_retorna_401(client: TestClient, session: Session):
+    response = client.get("/super-admin/users")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+def test_list_users_schema_nao_expoe_password_hash(
+    client: TestClient, session: Session
+):
+    """Regressao de seguranca — o schema de resposta e explicito e nao deve
+    vazar nem password_hash nem campos internos do model."""
+    super_admin = _create_user(
+        session,
+        email="super.schema@ifam.edu.br",
+        role=UserRole.SUPER_ADMIN,
+    )
+    _create_user(session, email="alvo.schema@ifam.edu.br")
+
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(super_admin),
+    )
+
+    assert response.status_code == 200
+    allowed_keys = {"id", "name", "email", "siape", "sector", "role", "created_at"}
+    for user in response.json()["users"]:
+        assert set(user.keys()) == allowed_keys
+        assert "password_hash" not in user
+
+
+def test_list_users_com_zero_approved_retorna_estrutura_vazia(
+    client: TestClient, session: Session
+):
+    super_admin = _create_user(
+        session,
+        email="super.empty@ifam.edu.br",
+        role=UserRole.SUPER_ADMIN,
+    )
+    # Super_admin e o unico APPROVED — se remove-lo da query so sobra vazio,
+    # mas como ele precisa existir para autenticar, vamos validar o caso
+    # onde so ele retorna (menor populacao possivel).
+    response = client.get(
+        "/super-admin/users",
+        headers=_auth_headers(super_admin),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["users"][0]["email"] == super_admin.email

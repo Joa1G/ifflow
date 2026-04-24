@@ -218,6 +218,34 @@ Lista todos os cadastros pendentes.
 }
 ```
 
+### GET /super-admin/users
+
+Lista todos os usuários com status `APPROVED` com suas roles atuais. Usado
+pela tela de gestão de papéis (F-24). Ordenação alfabética por `name`.
+
+Exige role `SUPER_ADMIN` apenas. ADMIN e USER recebem 403 `FORBIDDEN`.
+
+**Response 200:**
+```json
+{
+  "users": [
+    {
+      "id": "uuid",
+      "name": "Amanda Servidora",
+      "email": "amanda@ifam.edu.br",
+      "siape": "1234567",
+      "sector": "PROAD",
+      "role": "USER",
+      "created_at": "2026-04-20T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+Não retorna usuários `PENDING` ou `REJECTED` — moderação desses é feita em
+`GET /admin/users/pending`. Não expõe `password_hash` nem `updated_at`.
+
 ### POST /super-admin/users/{user_id}/promote
 
 Exige role `SUPER_ADMIN`. Promove um USER para ADMIN.
