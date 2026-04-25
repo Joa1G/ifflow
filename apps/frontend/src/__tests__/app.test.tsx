@@ -224,8 +224,6 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
 
   const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
     ["/admin/processes", "AdminProcessesPage"],
-    ["/admin/processes/new", "ProcessEditorPage"],
-    ["/admin/processes/xyz/edit", "ProcessEditorPage"],
     ["/super-admin/roles", "SuperAdminRolesPage"],
   ];
 
@@ -234,6 +232,66 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     await waitFor(() =>
       expect(screen.getByText(expected)).toBeInTheDocument(),
     );
+  });
+
+  it("renderiza /admin/processes/new → ProcessEditorPage modo create", async () => {
+    renderAt("/admin/processes/new");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Novo processo/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: /Criar processo/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /admin/processes/:id/edit → ProcessEditorPage modo edit (real)", async () => {
+    const PID = "11111111-1111-4111-8111-111111111111";
+    server.use(
+      http.get(`${BASE}/admin/processes/${PID}`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Solicitação de Capacitação",
+          short_description: "Curta",
+          full_description: "Descrição completa do processo de teste.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "DRAFT",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: null,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Solicitação de Capacitação" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/admin/processes/${PID}/edit`);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Solicitação de Capacitação/i,
+        }),
+      ).toBeInTheDocument(),
+    );
+    // Empty state das etapas aparece quando não há steps.
+    expect(
+      screen.getByRole("heading", {
+        level: 3,
+        name: /Sem etapas cadastradas/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza /admin/users → AdminUsersPage (real)", async () => {
