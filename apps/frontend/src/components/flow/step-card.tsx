@@ -48,15 +48,14 @@ export function StepCard({ step, onSelect, statusControl }: StepCardProps) {
             {step.title}
           </h3>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <User aria-hidden className="h-3.5 w-3.5" />
+          <div className="mt-2 flex flex-col gap-1.5 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <User aria-hidden className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">Responsável: {step.responsible}</span>
             </span>
-            <span aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1">
-              <Clock aria-hidden className="h-3.5 w-3.5" />
-              <span>Prazo: {step.estimated_time}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Prazo: {step.estimated_time}</span>
             </span>
           </div>
 
