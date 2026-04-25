@@ -51,12 +51,21 @@ export function Header() {
         {isAuthenticated && user ? (
           <UserMenu user={user} onLogout={handleLogout} />
         ) : (
-          <Button
-            asChild
-            className="h-9 rounded-md bg-ifflow-green px-4 text-sm font-medium text-white hover:bg-ifflow-green-hover focus-visible:ring-2 focus-visible:ring-ifflow-green focus-visible:ring-offset-2"
-          >
-            <Link to="/login">Entrar</Link>
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              asChild
+              variant="outline"
+              className="h-9 rounded-md border-ifflow-rule bg-transparent px-4 text-sm font-medium text-ifflow-ink hover:bg-ifflow-bone focus-visible:ring-2 focus-visible:ring-ifflow-green focus-visible:ring-offset-2"
+            >
+              <Link to="/register">Cadastrar</Link>
+            </Button>
+            <Button
+              asChild
+              className="h-9 rounded-md bg-ifflow-green px-4 text-sm font-medium text-white hover:bg-ifflow-green-hover focus-visible:ring-2 focus-visible:ring-ifflow-green focus-visible:ring-offset-2"
+            >
+              <Link to="/login">Entrar</Link>
+            </Button>
+          </div>
         )}
       </div>
     </header>

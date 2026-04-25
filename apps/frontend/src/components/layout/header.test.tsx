@@ -89,9 +89,13 @@ function renderHeader(initialPath = "/") {
 }
 
 describe("<Header />", () => {
-  it("sem user: mostra botão Entrar apontando para /login", () => {
+  it("sem user: mostra botões Cadastrar e Entrar apontando para as respectivas rotas", () => {
     setUser(null);
     renderHeader();
+
+    const cadastrar = screen.getByRole("link", { name: "Cadastrar" });
+    expect(cadastrar).toBeInTheDocument();
+    expect(cadastrar).toHaveAttribute("href", "/register");
 
     const entrar = screen.getByRole("link", { name: "Entrar" });
     expect(entrar).toBeInTheDocument();
