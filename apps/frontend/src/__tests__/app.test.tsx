@@ -222,15 +222,40 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     );
   });
 
-  const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/super-admin/roles", "SuperAdminRolesPage"],
-  ];
-
-  it.each(protectedRoutes)("renderiza %s → %s", async (path, expected) => {
-    renderAt(path);
-    await waitFor(() =>
-      expect(screen.getByText(expected)).toBeInTheDocument(),
+  it("renderiza /super-admin/roles → SuperAdminRolesPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/super-admin/users`, () =>
+        HttpResponse.json({
+          users: [
+            {
+              id: mockSuperAdmin.id,
+              name: mockSuperAdmin.name,
+              email: mockSuperAdmin.email,
+              siape: mockSuperAdmin.siape,
+              sector: mockSuperAdmin.sector,
+              role: "SUPER_ADMIN",
+              created_at: mockSuperAdmin.created_at,
+            },
+          ],
+          total: 1,
+        }),
+      ),
     );
+    renderAt("/super-admin/roles");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Gestão de papéis",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", {
+        level: 2,
+        name: "Super administradores",
+      }),
+    ).toBeInTheDocument();
+    // O próprio super_admin logado é marcado como "você".
+    expect(screen.getByLabelText("Este é você")).toBeInTheDocument();
   });
 
   it("renderiza /admin/processes → AdminProcessesPage (real)", async () => {
