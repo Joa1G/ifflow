@@ -151,8 +151,8 @@ export function StepEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl gap-0 overflow-hidden p-0">
-        <div className="overflow-y-auto">
+      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <DialogHeader className="space-y-2 border-b border-ifflow-rule px-6 pb-5 pt-6 text-left">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-ifflow-muted">
               Etapa {paddedOrder}
@@ -307,7 +307,7 @@ export function StepEditorDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="flex-row justify-end gap-2 border-t border-ifflow-rule bg-ifflow-bone/40 px-6 py-4">
+        <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-ifflow-rule bg-ifflow-bone/40 px-6 py-4">
           <Button
             type="button"
             variant="ghost"
