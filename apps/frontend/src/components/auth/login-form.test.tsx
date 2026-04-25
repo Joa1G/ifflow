@@ -82,6 +82,7 @@ function renderForm({
           <Route path="/pending" element={<LocationProbe />} />
           <Route path="/" element={<LocationProbe />} />
           <Route path="/dashboard" element={<LocationProbe />} />
+          <Route path="/admin/users" element={<LocationProbe />} />
         </Routes>
         <Toaster />
       </MemoryRouter>
@@ -165,6 +166,45 @@ describe("<LoginForm />", () => {
     });
     expect(useAuthStore.getState().token).toBe("tok-abc");
     expect(useAuthStore.getState().user).toEqual(mockUser);
+  });
+
+  it("ignora location.state.from quando o usuário não tem role para o destino (cai em /)", async () => {
+    // Reproduz o cenário do testing real: admin estava em /admin/users,
+    // logout limpou o token mas a rota ficou no histórico, ProtectedRoute
+    // mandou para /login com state.from=/admin/users. Em seguida o
+    // próximo login é como USER comum — não deve aterrissar em /forbidden.
+    const user = userEvent.setup();
+    server.use(
+      http.post(`${BASE}/auth/login`, () =>
+        HttpResponse.json({
+          access_token: "tok",
+          token_type: "bearer",
+          expires_in: 86400,
+          user: {
+            id: mockUser.id,
+            name: mockUser.name,
+            email: mockUser.email,
+            role: mockUser.role,
+            sector: mockUser.sector,
+          },
+        }),
+      ),
+      http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockUser)),
+    );
+
+    renderForm({ state: { from: { pathname: "/admin/users" } } });
+
+    await user.type(
+      screen.getByLabelText(/Email institucional/i),
+      "joana@ifam.edu.br",
+    );
+    await user.type(screen.getByLabelText(/^Senha$/i), "senha123");
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("probe")).toHaveTextContent("/"),
+    );
+    expect(screen.getByTestId("probe")).not.toHaveTextContent("/admin");
   });
 
   it("redireciona para location.state.from quando veio de rota protegida", async () => {

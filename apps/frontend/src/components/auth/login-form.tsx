@@ -17,7 +17,9 @@ import { Input } from "../ui/input";
 import { PasswordInput } from "./password-input";
 import { useLoginMutation } from "../../hooks/use-auth";
 import { ApiError } from "../../lib/api-error";
+import { userCanAccess } from "../../lib/route-permissions";
 import { loginSchema, type LoginInput } from "../../lib/validators/auth";
+import { useAuthStore } from "../../stores/auth-store";
 
 /**
  * Formulário de login.
@@ -50,8 +52,15 @@ export function LoginForm() {
   const onSubmit = (values: LoginInput) => {
     mutation.mutate(values, {
       onSuccess: () => {
+        // Após o login a mutation já populou o user no store. Usamos
+        // getState() em vez do hook para evitar uma render extra apenas
+        // pra ler um valor síncrono. Se por algum motivo o user não estiver
+        // disponível, caímos em "/" — é o destino seguro para qualquer role.
+        const me = useAuthStore.getState().user;
+        const target =
+          me && userCanAccess(from, me.role) ? from : "/";
         toast.success("Bem-vindo ao IFFLOW.");
-        navigate(from, { replace: true });
+        navigate(target, { replace: true });
       },
       onError: (err) => {
         if (!(err instanceof ApiError)) {
