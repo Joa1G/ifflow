@@ -64,15 +64,49 @@ const renderAt = (path: string) =>
   );
 
 describe("<App /> — rotas públicas", () => {
-  const stubRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/processes/abc-123", "ProcessDetailPage"],
-    ["/forbidden", "ForbiddenPage"],
-    ["/rota-inexistente", "NotFoundPage"],
-  ];
+  it("renderiza /processes/:id → ProcessDetailPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes/abc-123`, () =>
+        HttpResponse.json({
+          id: "abc-123",
+          title: "Solicitação de Capacitação",
+          short_description: "Curta",
+          full_description: "Descrição completa do processo de teste.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: ["Estar em estágio probatório concluído"],
+          step_count: 8,
+          access_count: 0,
+        }),
+      ),
+    );
+    renderAt("/processes/abc-123");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: /Solicitação de Capacitação/i,
+      }),
+    ).toBeInTheDocument();
+  });
 
-  it.each(stubRoutes)("renderiza %s → %s", (path, expected) => {
-    renderAt(path);
-    expect(screen.getByText(expected)).toBeInTheDocument();
+  it("renderiza /forbidden → ForbiddenPage (real)", () => {
+    renderAt("/forbidden");
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /Sem permissão para esta área/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza rota inexistente → NotFoundPage (real)", () => {
+    renderAt("/rota-inexistente");
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /Esta página não existe/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza / → HomePage (real)", async () => {
@@ -418,14 +452,24 @@ describe("<App /> — rotas protegidas com role insuficiente", () => {
   it("USER em /admin/users é enviado para /forbidden", async () => {
     renderAt("/admin/users");
     await waitFor(() =>
-      expect(screen.getByText("ForbiddenPage")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Sem permissão para esta área/i,
+        }),
+      ).toBeInTheDocument(),
     );
   });
 
   it("USER em /super-admin/roles é enviado para /forbidden", async () => {
     renderAt("/super-admin/roles");
     await waitFor(() =>
-      expect(screen.getByText("ForbiddenPage")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Sem permissão para esta área/i,
+        }),
+      ).toBeInTheDocument(),
     );
   });
 });
