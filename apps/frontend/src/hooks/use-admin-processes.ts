@@ -18,11 +18,20 @@ import type { components } from "../types/api";
 type ProcessAdminView = components["schemas"]["ProcessAdminView"];
 type ProcessCreate = components["schemas"]["ProcessCreate"];
 type ProcessUpdate = components["schemas"]["ProcessUpdate"];
+type ProcessesAdminListResponse =
+  components["schemas"]["ProcessesAdminListResponse"];
+type ProcessStatus = components["schemas"]["ProcessStatus"];
+type ProcessCategory = components["schemas"]["ProcessCategory"];
 type FlowStepAdminView = components["schemas"]["FlowStepAdminView"];
 type FlowStepCreate = components["schemas"]["FlowStepCreate"];
 type FlowStepUpdate = components["schemas"]["FlowStepUpdate"];
 type StepResourceAdminView = components["schemas"]["StepResourceAdminView"];
 type StepResourceCreate = components["schemas"]["StepResourceCreate"];
+
+export interface AdminProcessesListFilters {
+  status?: ProcessStatus;
+  category?: ProcessCategory;
+}
 
 /**
  * Hooks do editor admin de processos (F-22).
@@ -38,6 +47,36 @@ type StepResourceCreate = components["schemas"]["StepResourceCreate"];
 
 export const adminProcessQueryKey = (processId: string | undefined) =>
   ["admin-process", processId] as const;
+
+// Mantemos o mesmo prefixo `["admin-processes-list", ...]` para que
+// `invalidateQueries({ queryKey: ["admin-processes-list"] })` derrube
+// todas as variantes de filtro (status/category) de uma só vez.
+export const adminProcessesListQueryKey = (
+  filters: AdminProcessesListFilters = {},
+) => ["admin-processes-list", filters] as const;
+
+/**
+ * Lista admin de processos (F-23) — vê todos os status, opcionalmente
+ * filtrados por status e/ou category. O backend exige role ADMIN/SUPER_ADMIN.
+ *
+ * As contagens por status para os filtros vêm da própria lista quando
+ * `filters.status` é undefined; o componente pode aplicar `Array.filter`
+ * em cima do `data.processes` para popular badges sem nova requisição.
+ */
+export function useAdminProcessesList(
+  filters: AdminProcessesListFilters = {},
+): UseQueryResult<ProcessesAdminListResponse, ApiError> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.category) params.set("category", filters.category);
+  const qs = params.toString();
+  const path = qs ? `/admin/processes?${qs}` : "/admin/processes";
+
+  return useQuery<ProcessesAdminListResponse, ApiError>({
+    queryKey: adminProcessesListQueryKey(filters),
+    queryFn: () => apiGet<ProcessesAdminListResponse>(path),
+  });
+}
 
 export function useAdminProcess(
   processId: string | undefined,
@@ -55,9 +94,13 @@ export function useCreateProcess(): UseMutationResult<
   ApiError,
   ProcessCreate
 > {
+  const queryClient = useQueryClient();
   return useMutation<ProcessAdminView, ApiError, ProcessCreate>({
     mutationFn: (body) =>
       apiPost<ProcessAdminView>("/admin/processes", body),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+    },
   });
 }
 
@@ -79,6 +122,7 @@ export function useUpdateProcess(): UseMutationResult<
       queryClient.invalidateQueries({
         queryKey: adminProcessQueryKey(variables.processId),
       });
+      queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
     },
   });
 }
@@ -229,5 +273,77 @@ export function useDeleteResource(): UseMutationResult<
         queryKey: ["process-flow", variables.processId],
       });
     },
+  });
+}
+
+// ---------- Transições de status (F-23) ----------
+//
+// Helper compartilhado de invalidação. Toda transição altera o status
+// admin, e PUBLISHED/ARCHIVED também afetam o que aparece na listagem
+// pública e no detalhe público — invalidar tudo de uma vez é mais
+// simples (e barato) do que decidir caso a caso pelo status alvo.
+function invalidateProcessCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  processId: string,
+) {
+  queryClient.invalidateQueries({
+    queryKey: adminProcessQueryKey(processId),
+  });
+  queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+  queryClient.invalidateQueries({ queryKey: ["processes"] });
+  queryClient.invalidateQueries({ queryKey: ["process", processId] });
+}
+
+interface ProcessTransitionInput {
+  processId: string;
+}
+
+export function useSubmitProcessForReview(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    mutationFn: ({ processId }) =>
+      apiPost<ProcessAdminView>(
+        `/admin/processes/${processId}/submit-for-review`,
+        {},
+      ),
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
+  });
+}
+
+export function useApproveProcess(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    mutationFn: ({ processId }) =>
+      apiPost<ProcessAdminView>(
+        `/admin/processes/${processId}/approve`,
+        {},
+      ),
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
+  });
+}
+
+export function useArchiveProcess(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    // DELETE no admin é soft delete — backend devolve o ProcessAdminView
+    // já com status=ARCHIVED, então tratamos como mutation de retorno.
+    mutationFn: ({ processId }) =>
+      apiDelete<ProcessAdminView>(`/admin/processes/${processId}`),
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
   });
 }

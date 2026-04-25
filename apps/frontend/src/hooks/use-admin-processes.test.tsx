@@ -16,13 +16,18 @@ import {
 import { __resetApiClientForTests } from "../lib/api-client";
 import { useAuthStore, wireAuthStoreToApiClient } from "../stores/auth-store";
 import {
+  adminProcessesListQueryKey,
   adminProcessQueryKey,
   useAdminProcess,
+  useAdminProcessesList,
+  useApproveProcess,
+  useArchiveProcess,
   useCreateProcess,
   useCreateResource,
   useCreateStep,
   useDeleteResource,
   useDeleteStep,
+  useSubmitProcessForReview,
   useUpdateProcess,
   useUpdateStep,
 } from "./use-admin-processes";
@@ -305,5 +310,133 @@ describe("useCreateResource / useDeleteResource", () => {
     expect(new URL(url).pathname).toBe(
       `/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources/${RESOURCE_ID}`,
     );
+  });
+});
+
+describe("useAdminProcessesList", () => {
+  it("busca a lista admin sem filtros via GET /admin/processes", async () => {
+    let receivedUrl = "";
+    server.use(
+      http.get(`${BASE}/admin/processes`, ({ request }) => {
+        receivedUrl = request.url;
+        return HttpResponse.json({
+          processes: [adminProcessPayload],
+          total: 1,
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useAdminProcessesList(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.total).toBe(1);
+    // Sem filtros, a query string deve estar vazia.
+    expect(new URL(receivedUrl).search).toBe("");
+  });
+
+  it("propaga filtros de status e category na query string", async () => {
+    let receivedUrl = "";
+    server.use(
+      http.get(`${BASE}/admin/processes`, ({ request }) => {
+        receivedUrl = request.url;
+        return HttpResponse.json({ processes: [], total: 0 });
+      }),
+    );
+
+    const { result } = renderHook(
+      () =>
+        useAdminProcessesList({ status: "PUBLISHED", category: "RH" }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const params = new URL(receivedUrl).searchParams;
+    expect(params.get("status")).toBe("PUBLISHED");
+    expect(params.get("category")).toBe("RH");
+  });
+});
+
+describe("useSubmitProcessForReview", () => {
+  it("envia POST submit-for-review e invalida lista + detalhe", async () => {
+    server.use(
+      http.post(
+        `${BASE}/admin/processes/${PROCESS_ID}/submit-for-review`,
+        () =>
+          HttpResponse.json({ ...adminProcessPayload, status: "IN_REVIEW" }),
+      ),
+    );
+
+    queryClient.setQueryData(
+      adminProcessQueryKey(PROCESS_ID),
+      adminProcessPayload,
+    );
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [adminProcessPayload],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useSubmitProcessForReview(), {
+      wrapper,
+    });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(
+      queryClient.getQueryState(adminProcessQueryKey(PROCESS_ID))
+        ?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
+  });
+});
+
+describe("useApproveProcess", () => {
+  it("envia POST approve e invalida caches admin + público", async () => {
+    server.use(
+      http.post(`${BASE}/admin/processes/${PROCESS_ID}/approve`, () =>
+        HttpResponse.json({ ...adminProcessPayload, status: "PUBLISHED" }),
+      ),
+    );
+
+    queryClient.setQueryData(["processes", { search: "", category: "ALL" }], {
+      processes: [],
+      total: 0,
+    });
+
+    const { result } = renderHook(() => useApproveProcess(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // A lista pública também precisa revalidar — PUBLISHED faz o
+    // processo aparecer para servidores.
+    expect(
+      queryClient.getQueryState([
+        "processes",
+        { search: "", category: "ALL" },
+      ])?.isInvalidated,
+    ).toBe(true);
+  });
+});
+
+describe("useArchiveProcess", () => {
+  it("envia DELETE /admin/processes/:id e invalida caches", async () => {
+    server.use(
+      http.delete(`${BASE}/admin/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json({ ...adminProcessPayload, status: "ARCHIVED" }),
+      ),
+    );
+
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [adminProcessPayload],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useArchiveProcess(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.status).toBe("ARCHIVED");
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
   });
 });

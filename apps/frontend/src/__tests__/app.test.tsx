@@ -223,7 +223,6 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
   });
 
   const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/admin/processes", "AdminProcessesPage"],
     ["/super-admin/roles", "SuperAdminRolesPage"],
   ];
 
@@ -232,6 +231,28 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     await waitFor(() =>
       expect(screen.getByText(expected)).toBeInTheDocument(),
     );
+  });
+
+  it("renderiza /admin/processes → AdminProcessesPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/admin/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
+    );
+    renderAt("/admin/processes");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Processos administrativos",
+      }),
+    ).toBeInTheDocument();
+    // Empty state aparece após a query resolver com lista vazia.
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Nenhum processo cadastrado",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza /admin/processes/new → ProcessEditorPage modo create", async () => {
