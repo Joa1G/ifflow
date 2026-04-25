@@ -183,7 +183,7 @@ export function StepEditorDialog({
                       <FormLabel>Setor responsável</FormLabel>
                       <FormControl>
                         <Select
-                          value={field.value}
+                          value={field.value || undefined}
                           onValueChange={field.onChange}
                           disabled={!sectorsQuery.isSuccess}
                         >
