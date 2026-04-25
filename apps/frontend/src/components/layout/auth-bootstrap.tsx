@@ -45,7 +45,7 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
       >
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
-          <span className="text-sm">Carregando sessão...</span>
+          <span className="text-sm">Carregando sessão</span>
         </div>
       </div>
     );

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { components } from "../../types/api";
 import { Swimlane } from "./swimlane";
 
@@ -8,6 +10,12 @@ type SectorRef = components["schemas"]["SectorRef"];
 interface FlowViewerProps {
   flow: ProcessFullFlow;
   onSelectStep?: (step: FlowStepRead) => void;
+  /**
+   * Função chamada por cada StepCard para montar o controle de status do
+   * checklist pessoal (F-20). Fica opcional para não acoplar o viewer à
+   * store de progresso — quem sabe do usuário logado é a page.
+   */
+  renderStatusControl?: (step: FlowStepRead) => ReactNode;
 }
 
 /**
@@ -55,7 +63,11 @@ function FlowMarker({
   );
 }
 
-export function FlowViewer({ flow, onSelectStep }: FlowViewerProps) {
+export function FlowViewer({
+  flow,
+  onSelectStep,
+  renderStatusControl,
+}: FlowViewerProps) {
   const sortedSteps = [...flow.steps].sort((a, b) => a.order - b.order);
   const sectors = collectSectorsInFlowOrder(sortedSteps);
 
@@ -71,6 +83,7 @@ export function FlowViewer({ flow, onSelectStep }: FlowViewerProps) {
                 sector={sector}
                 allSteps={sortedSteps}
                 onSelectStep={onSelectStep}
+                renderStatusControl={renderStatusControl}
               />
             </div>
           ))}

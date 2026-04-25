@@ -130,7 +130,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto max-w-6xl px-4 py-8 md:px-8 md:py-12">
-        <section aria-labelledby="home-hero" className="max-w-3xl space-y-6">
+        <section aria-labelledby="home-hero" className="w-full space-y-6">
           <EyebrowRule label="PROAD · IFAM" />
 
           <div className="space-y-4">
@@ -140,7 +140,7 @@ export default function HomePage() {
             >
               Consulte qualquer processo da PROAD, do início ao fim.
             </h1>
-            <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground">
+            <p className="text-lg leading-relaxed text-muted-foreground">
               Etapas, documentos necessários e base legal de cada processo
               administrativo do IFAM. Acompanhe seu próprio andamento com um
               checklist pessoal — sem substituir o SIPAC.

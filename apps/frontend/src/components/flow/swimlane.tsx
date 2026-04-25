@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { components } from "../../types/api";
 import { StepCard } from "./step-card";
 
@@ -8,6 +10,7 @@ interface SwimlaneProps {
   sector: SectorRef;
   allSteps: FlowStepRead[];
   onSelectStep?: (step: FlowStepRead) => void;
+  renderStatusControl?: (step: FlowStepRead) => ReactNode;
 }
 
 /**
@@ -19,7 +22,12 @@ interface SwimlaneProps {
  * raias (step 3 em PROAD e step 3 em DRH ficam exatamente na mesma
  * coluna), o que é o que torna o padrão swimlane legível.
  */
-export function Swimlane({ sector, allSteps, onSelectStep }: SwimlaneProps) {
+export function Swimlane({
+  sector,
+  allSteps,
+  onSelectStep,
+  renderStatusControl,
+}: SwimlaneProps) {
   const columnCount = allSteps.length;
 
   return (
@@ -48,7 +56,11 @@ export function Swimlane({ sector, allSteps, onSelectStep }: SwimlaneProps) {
       {allSteps.map((step) =>
         step.sector.id === sector.id ? (
           <div key={step.id} className="relative z-[1]">
-            <StepCard step={step} onSelect={onSelectStep} />
+            <StepCard
+              step={step}
+              onSelect={onSelectStep}
+              statusControl={renderStatusControl?.(step)}
+            />
           </div>
         ) : (
           <div key={step.id} aria-hidden />

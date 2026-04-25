@@ -59,7 +59,7 @@ export function ProcessDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[85vh] gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[85vh] max-w-xl flex-col gap-0 overflow-hidden p-0">
         {query.isPending ? <ModalSkeleton /> : null}
 
         {query.isError ? (
@@ -103,7 +103,7 @@ function ModalSuccess({
 
   return (
     <>
-      <div className="overflow-y-auto px-6 pb-5 pt-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 pt-6">
         <div className="flex items-center justify-between gap-4">
           <EyebrowRule label="Ficha do processo" />
           <span
@@ -182,7 +182,7 @@ function ModalSuccess({
         </p>
       </div>
 
-      <DialogFooter className="border-t bg-muted/30 px-6 py-5 sm:items-center sm:justify-between sm:space-x-4">
+      <DialogFooter className="shrink-0 border-t bg-muted/30 px-6 py-5 sm:items-center sm:justify-between sm:space-x-4">
         <p className="max-w-[48ch] text-xs leading-relaxed text-muted-foreground">
           Esta ficha é consulta pública — o acompanhamento no SIPAC permanece
           obrigatório.
@@ -213,7 +213,7 @@ function ModalSuccess({
 function ModalSkeleton() {
   return (
     <>
-      <div className="overflow-y-auto px-6 pb-5 pt-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 pt-6">
         <DialogHeader className="sr-only">
           <DialogTitle>Carregando detalhes do processo</DialogTitle>
           <DialogDescription>
@@ -240,7 +240,7 @@ function ModalSkeleton() {
           <Skeleton className="h-12 w-32" />
         </div>
       </div>
-      <DialogFooter className="border-t bg-muted/30 px-6 py-5">
+      <DialogFooter className="shrink-0 border-t bg-muted/30 px-6 py-5">
         <Skeleton className="h-10 w-40" />
       </DialogFooter>
     </>
@@ -256,7 +256,7 @@ function ModalError({
 }) {
   return (
     <>
-      <div className="px-6 pb-5 pt-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 pt-6">
         <DialogHeader className="sr-only">
           <DialogTitle>Erro ao carregar processo</DialogTitle>
           <DialogDescription>
@@ -271,7 +271,7 @@ function ModalError({
           </AlertDescription>
         </Alert>
       </div>
-      <DialogFooter className="border-t bg-muted/30 px-6 py-5">
+      <DialogFooter className="shrink-0 border-t bg-muted/30 px-6 py-5">
         <Button variant="outline" onClick={onClose}>
           Fechar
         </Button>

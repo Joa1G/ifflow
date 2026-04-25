@@ -70,13 +70,13 @@ describe("<FlowViewer />", () => {
     render(<FlowViewer flow={flow} />);
 
     expect(
-      screen.getByRole("button", { name: /Etapa 1:/i }),
+      screen.getByRole("article", { name: /Etapa 1:/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Etapa 2:/i }),
+      screen.getByRole("article", { name: /Etapa 2:/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Etapa 3:/i }),
+      screen.getByRole("article", { name: /Etapa 3:/i }),
     ).toBeInTheDocument();
   });
 
@@ -98,10 +98,10 @@ describe("<FlowViewer />", () => {
       screen.getByRole("button", { name: /Etapa 1:.*Autuar/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Etapa 2:.*Análise/i }),
+      screen.getByRole("article", { name: /Etapa 2:.*Análise/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Etapa 3:.*Consolidar/i }),
+      screen.getByRole("article", { name: /Etapa 3:.*Consolidar/i }),
     ).toBeInTheDocument();
   });
 
@@ -110,11 +110,28 @@ describe("<FlowViewer />", () => {
     render(<FlowViewer flow={flow} onSelectStep={onSelectStep} />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Etapa 2:.*Análise/i }),
+      screen.getByRole("button", {
+        name: /Ver detalhes da etapa 2: Análise/i,
+      }),
     );
 
     expect(onSelectStep).toHaveBeenCalledTimes(1);
     expect(onSelectStep).toHaveBeenCalledWith(flow.steps[1]);
+  });
+
+  it("passa o statusControl renderizado para cada step via renderStatusControl", () => {
+    render(
+      <FlowViewer
+        flow={flow}
+        renderStatusControl={(step) => (
+          <span data-testid={`status-${step.id}`}>status:{step.id}</span>
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId("status-s1")).toBeInTheDocument();
+    expect(screen.getByTestId("status-s2")).toBeInTheDocument();
+    expect(screen.getByTestId("status-s3")).toBeInTheDocument();
   });
 
   it("renderiza marcadores de início e fim do fluxo", () => {

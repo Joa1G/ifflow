@@ -64,15 +64,49 @@ const renderAt = (path: string) =>
   );
 
 describe("<App /> — rotas públicas", () => {
-  const stubRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/processes/abc-123", "ProcessDetailPage"],
-    ["/forbidden", "ForbiddenPage"],
-    ["/rota-inexistente", "NotFoundPage"],
-  ];
+  it("renderiza /processes/:id → ProcessDetailPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/processes/abc-123`, () =>
+        HttpResponse.json({
+          id: "abc-123",
+          title: "Solicitação de Capacitação",
+          short_description: "Curta",
+          full_description: "Descrição completa do processo de teste.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: ["Estar em estágio probatório concluído"],
+          step_count: 8,
+          access_count: 0,
+        }),
+      ),
+    );
+    renderAt("/processes/abc-123");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: /Solicitação de Capacitação/i,
+      }),
+    ).toBeInTheDocument();
+  });
 
-  it.each(stubRoutes)("renderiza %s → %s", (path, expected) => {
-    renderAt(path);
-    expect(screen.getByText(expected)).toBeInTheDocument();
+  it("renderiza /forbidden → ForbiddenPage (real)", () => {
+    renderAt("/forbidden");
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /Sem permissão para esta área/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza rota inexistente → NotFoundPage (real)", () => {
+    renderAt("/rota-inexistente");
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /Esta página não existe/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza / → HomePage (real)", async () => {
@@ -219,21 +253,134 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     });
     server.use(
       http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockSuperAdmin)),
+      // Defaults para o badge de notificação admin (Header global dispara
+      // essas duas queries assim que monta para um user com role admin).
+      // Um teste específico pode sobrescrever para asseverar contagens.
+      http.get(`${BASE}/admin/users/pending`, () =>
+        HttpResponse.json({ users: [], total: 0 }),
+      ),
+      http.get(`${BASE}/admin/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
     );
   });
 
-  const protectedRoutes: ReadonlyArray<readonly [string, string]> = [
-    ["/admin/processes", "AdminProcessesPage"],
-    ["/admin/processes/new", "ProcessEditorPage"],
-    ["/admin/processes/xyz/edit", "ProcessEditorPage"],
-    ["/super-admin/roles", "SuperAdminRolesPage"],
-  ];
-
-  it.each(protectedRoutes)("renderiza %s → %s", async (path, expected) => {
-    renderAt(path);
-    await waitFor(() =>
-      expect(screen.getByText(expected)).toBeInTheDocument(),
+  it("renderiza /super-admin/roles → SuperAdminRolesPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/super-admin/users`, () =>
+        HttpResponse.json({
+          users: [
+            {
+              id: mockSuperAdmin.id,
+              name: mockSuperAdmin.name,
+              email: mockSuperAdmin.email,
+              siape: mockSuperAdmin.siape,
+              sector: mockSuperAdmin.sector,
+              role: "SUPER_ADMIN",
+              created_at: mockSuperAdmin.created_at,
+            },
+          ],
+          total: 1,
+        }),
+      ),
     );
+    renderAt("/super-admin/roles");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Gestão de papéis",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", {
+        level: 2,
+        name: "Super administradores",
+      }),
+    ).toBeInTheDocument();
+    // O próprio super_admin logado é marcado como "você".
+    expect(screen.getByLabelText("Este é você")).toBeInTheDocument();
+  });
+
+  it("renderiza /admin/processes → AdminProcessesPage (real)", async () => {
+    server.use(
+      http.get(`${BASE}/admin/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
+    );
+    renderAt("/admin/processes");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Processos administrativos",
+      }),
+    ).toBeInTheDocument();
+    // Empty state aparece após a query resolver com lista vazia.
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Nenhum processo cadastrado",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /admin/processes/new → ProcessEditorPage modo create", async () => {
+    renderAt("/admin/processes/new");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Novo processo/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: /Criar processo/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /admin/processes/:id/edit → ProcessEditorPage modo edit (real)", async () => {
+    const PID = "11111111-1111-4111-8111-111111111111";
+    server.use(
+      http.get(`${BASE}/admin/processes/${PID}`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Solicitação de Capacitação",
+          short_description: "Curta",
+          full_description: "Descrição completa do processo de teste.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "DRAFT",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: null,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Solicitação de Capacitação" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/admin/processes/${PID}/edit`);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Solicitação de Capacitação/i,
+        }),
+      ).toBeInTheDocument(),
+    );
+    // Empty state das etapas aparece quando não há steps.
+    expect(
+      screen.getByRole("heading", {
+        level: 3,
+        name: /Sem etapas cadastradas/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza /admin/users → AdminUsersPage (real)", async () => {
@@ -256,6 +403,17 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
         HttpResponse.json({
           process: { id: "abc-123", title: "Solicitação de Capacitação" },
           steps: [],
+        }),
+      ),
+      // A página agora também consome o progresso do usuário (F-20) para
+      // renderizar o seletor de status nos cards — precisa do handler aqui
+      // ou o MSW aborta com `onUnhandledRequest: "error"`.
+      http.get(`${BASE}/progress/abc-123`, () =>
+        HttpResponse.json({
+          id: "prog-1",
+          process_id: "abc-123",
+          step_statuses: {},
+          last_updated: "2026-04-21T10:00:00Z",
         }),
       ),
     );
@@ -303,14 +461,24 @@ describe("<App /> — rotas protegidas com role insuficiente", () => {
   it("USER em /admin/users é enviado para /forbidden", async () => {
     renderAt("/admin/users");
     await waitFor(() =>
-      expect(screen.getByText("ForbiddenPage")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Sem permissão para esta área/i,
+        }),
+      ).toBeInTheDocument(),
     );
   });
 
   it("USER em /super-admin/roles é enviado para /forbidden", async () => {
     renderAt("/super-admin/roles");
     await waitFor(() =>
-      expect(screen.getByText("ForbiddenPage")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: /Sem permissão para esta área/i,
+        }),
+      ).toBeInTheDocument(),
     );
   });
 });

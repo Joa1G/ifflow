@@ -170,6 +170,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/super-admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Approved Users */
+        get: operations["list_approved_users_super_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/super-admin/users/{user_id}/promote": {
         parameters: {
             query?: never;
@@ -402,6 +419,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/progress/{process_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Progress
+         * @description Retorna (ou cria) o progresso do usuario autenticado no processo.
+         */
+        get: operations["get_progress_progress__process_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/progress/{process_id}/steps/{step_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Progress Step
+         * @description Atualiza o status de uma etapa no progresso pessoal.
+         */
+        patch: operations["update_progress_step_progress__process_id__steps__step_id__patch"];
+        trace?: never;
+    };
+    "/sectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sectors */
+        get: operations["list_sectors_sectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -423,6 +497,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApprovedUserView
+         * @description Schema de leitura usado pela listagem de gestao de papeis (B-25).
+         *
+         *     Nao expoe `password_hash`, `status` (e sempre APPROVED aqui) nem
+         *     `updated_at` (irrelevante pra UX da tela). Campo `role` e essencial porque
+         *     e justamente o que o super_admin vai mudar via promote/demote.
+         */
+        ApprovedUserView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+            /** Siape */
+            siape: string;
+            /** Sector */
+            sector: string;
+            role: components["schemas"]["UserRole"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ApprovedUsersListResponse */
+        ApprovedUsersListResponse: {
+            /** Users */
+            users: components["schemas"]["ApprovedUserView"][];
+            /** Total */
+            total: number;
+        };
         /**
          * FlowStepAdminView
          * @description Retorno admin de uma etapa — inclui process_id para referencia cruzada.
@@ -860,6 +970,18 @@ export interface components {
             id: string;
             role: components["schemas"]["UserRole"];
         };
+        /** SectorRead */
+        SectorRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Acronym */
+            acronym: string;
+        };
         /**
          * SectorRef
          * @description Referencia embutida de Sector dentro do fluxo publico.
@@ -874,6 +996,13 @@ export interface components {
             name: string;
             /** Acronym */
             acronym: string;
+        };
+        /** SectorsListResponse */
+        SectorsListResponse: {
+            /** Sectors */
+            sectors: components["schemas"]["SectorRead"][];
+            /** Total */
+            total: number;
         };
         /**
          * StepResourceAdminView
@@ -934,6 +1063,22 @@ export interface components {
             /** Content */
             content: string | null;
         };
+        /**
+         * StepStatus
+         * @enum {string}
+         */
+        StepStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+        /**
+         * StepStatusUpdate
+         * @description Body do PATCH /progress/{process_id}/steps/{step_id}.
+         *
+         *     `extra="forbid"` impede que o cliente mande `user_id`, `process_id` ou
+         *     outros campos tentando mass-assignment — o unico valor aceito e o
+         *     proprio status novo.
+         */
+        StepStatusUpdate: {
+            status: components["schemas"]["StepStatus"];
+        };
         /** UserMe */
         UserMe: {
             /**
@@ -956,6 +1101,31 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * UserProgressRead
+         * @description Retorno dos endpoints /progress/* (GET e PATCH).
+         */
+        UserProgressRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Process Id
+             * Format: uuid
+             */
+            process_id: string;
+            /** Step Statuses */
+            step_statuses: {
+                [key: string]: components["schemas"]["StepStatus"];
+            };
+            /**
+             * Last Updated
+             * Format: date-time
+             */
+            last_updated: string;
         };
         /**
          * UserRole
@@ -1248,6 +1418,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_approved_users_super_admin_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovedUsersListResponse"];
                 };
             };
         };
@@ -1796,6 +1986,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_progress_progress__process_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProgressRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_progress_step_progress__process_id__steps__step_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProgressRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sectors_sectors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectorsListResponse"];
                 };
             };
         };

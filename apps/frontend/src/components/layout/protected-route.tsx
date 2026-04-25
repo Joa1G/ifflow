@@ -2,19 +2,10 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "../../hooks/use-auth";
+import { roleRank } from "../../lib/route-permissions";
 import type { components } from "../../types/api";
 
 type UserRole = components["schemas"]["UserRole"];
-
-/**
- * Hierarquia de roles. Um requiredRole="ADMIN" aceita também SUPER_ADMIN.
- * Mantida como tabela de rank para permitir comparações numéricas diretas.
- */
-const roleRank: Record<UserRole, number> = {
-  USER: 1,
-  ADMIN: 2,
-  SUPER_ADMIN: 3,
-};
 
 interface ProtectedRouteProps {
   children: ReactNode;
