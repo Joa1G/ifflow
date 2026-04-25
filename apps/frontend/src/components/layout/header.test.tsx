@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import {
   MemoryRouter,
@@ -38,6 +39,8 @@ const baseUser: UserMe = {
   created_at: "2026-04-17T12:00:00Z",
 };
 
+const BASE = "http://localhost:8000";
+
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterAll(() => server.close());
@@ -52,6 +55,18 @@ beforeEach(() => {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // Defaults para o badge de notificação admin (Header global dispara
+  // essas duas queries assim que monta para um user ADMIN/SUPER_ADMIN).
+  // Cada teste pode sobrescrever com server.use() para asseverar números
+  // específicos.
+  server.use(
+    http.get(`${BASE}/admin/users/pending`, () =>
+      HttpResponse.json({ users: [], total: 0 }),
+    ),
+    http.get(`${BASE}/admin/processes`, () =>
+      HttpResponse.json({ processes: [], total: 0 }),
+    ),
+  );
 });
 afterEach(() => {
   server.resetHandlers();
@@ -164,6 +179,53 @@ describe("<Header />", () => {
     expect(
       screen.getByRole("menuitem", { name: /Gerenciar papéis/i }),
     ).toBeInTheDocument();
+  });
+
+  it("admin sem pendências: não mostra bolinha de notificação na avatar", async () => {
+    setUser({ ...baseUser, role: "ADMIN" });
+    renderHeader();
+
+    // O trigger é o botão da avatar — esperar o hook resolver com total=0.
+    const trigger = await screen.findByRole("button", {
+      name: /Menu do usuário/i,
+    });
+    await waitFor(() =>
+      expect(trigger.querySelector('[role="status"]')).toBeNull(),
+    );
+  });
+
+  it("admin com pendências: mostra bolinha na avatar e count nos itens do menu", async () => {
+    server.use(
+      http.get(`${BASE}/admin/users/pending`, () =>
+        HttpResponse.json({ users: [], total: 3 }),
+      ),
+      http.get(`${BASE}/admin/processes`, () =>
+        HttpResponse.json({ processes: [], total: 2 }),
+      ),
+    );
+    const user = userEvent.setup();
+    setUser({ ...baseUser, role: "ADMIN" });
+    renderHeader();
+
+    // Bolinha aparece com aria-label informando o total agregado.
+    expect(
+      await screen.findByRole("status", {
+        name: /5 itens pendentes de aprovação/i,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Menu do usuário/i }));
+
+    // Cada item do menu mostra seu count individual.
+    const usersItem = await screen.findByRole("menuitem", {
+      name: /Usuários pendentes/i,
+    });
+    expect(usersItem).toHaveTextContent("3");
+
+    const processesItem = screen.getByRole("menuitem", {
+      name: /Processos \(Admin\)/i,
+    });
+    expect(processesItem).toHaveTextContent("2");
   });
 
   it("clicar em Sair chama logout e redireciona para /", async () => {

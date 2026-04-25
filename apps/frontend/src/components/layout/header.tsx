@@ -2,6 +2,7 @@ import { ClipboardList, LogOut, Shield, ShieldCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import { useAdminNotifications } from "../../hooks/use-admin-notifications";
 import { useAuth } from "../../hooks/use-auth";
 import type { UserMe } from "../../stores/auth-store";
 import { Button } from "../ui/button";
@@ -92,9 +93,10 @@ function UserMenu({ user, onLogout }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Menu do usuário"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-ifflow-green text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ifflow-green focus-visible:ring-offset-2"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full bg-ifflow-green text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ifflow-green focus-visible:ring-offset-2"
       >
         <span aria-hidden>{initialsOf(user.name)}</span>
+        {isAdmin && <AdminNotificationDot />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
@@ -108,18 +110,7 @@ function UserMenu({ user, onLogout }: UserMenuProps) {
         {isAdmin && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/admin/processes" className="cursor-pointer">
-                <ClipboardList className="mr-2 h-4 w-4" aria-hidden />
-                Processos (Admin)
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/admin/users" className="cursor-pointer">
-                <Shield className="mr-2 h-4 w-4" aria-hidden />
-                Usuários pendentes
-              </Link>
-            </DropdownMenuItem>
+            <AdminMenuItems />
           </>
         )}
         {isSuperAdmin && (
@@ -140,5 +131,64 @@ function UserMenu({ user, onLogout }: UserMenuProps) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Bolinha vermelha sobre a avatar quando há ≥1 item para aprovar (cadastros
+ * pendentes ou processos IN_REVIEW).
+ *
+ * Componente isolado para que o hook `useAdminNotifications` (que dispara
+ * 2 queries admin) só seja chamado para usuários com role ADMIN/SUPER_ADMIN
+ * — o pai já garante essa condição antes de montar.
+ *
+ * O ring branco (ring-ifflow-paper) destaca a bolinha do verde da avatar.
+ */
+function AdminNotificationDot() {
+  const { total } = useAdminNotifications();
+  if (total === 0) return null;
+  return (
+    <span
+      role="status"
+      aria-label={`${total} ${total === 1 ? "item pendente de aprovação" : "itens pendentes de aprovação"}`}
+      className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-ifflow-paper"
+    />
+  );
+}
+
+function AdminMenuItems() {
+  const { pendingUsersCount, pendingProcessesCount } = useAdminNotifications();
+  return (
+    <>
+      <DropdownMenuItem asChild>
+        <Link to="/admin/processes" className="cursor-pointer">
+          <ClipboardList className="mr-2 h-4 w-4" aria-hidden />
+          <span className="flex-1">Processos (Admin)</span>
+          {pendingProcessesCount > 0 ? (
+            <CountPill count={pendingProcessesCount} />
+          ) : null}
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <Link to="/admin/users" className="cursor-pointer">
+          <Shield className="mr-2 h-4 w-4" aria-hidden />
+          <span className="flex-1">Usuários pendentes</span>
+          {pendingUsersCount > 0 ? (
+            <CountPill count={pendingUsersCount} />
+          ) : null}
+        </Link>
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+function CountPill({ count }: { count: number }) {
+  return (
+    <span
+      aria-hidden
+      className="ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-sm bg-ifflow-green/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-ifflow-green"
+    >
+      {count}
+    </span>
   );
 }

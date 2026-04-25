@@ -253,6 +253,15 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     });
     server.use(
       http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockSuperAdmin)),
+      // Defaults para o badge de notificação admin (Header global dispara
+      // essas duas queries assim que monta para um user com role admin).
+      // Um teste específico pode sobrescrever para asseverar contagens.
+      http.get(`${BASE}/admin/users/pending`, () =>
+        HttpResponse.json({ users: [], total: 0 }),
+      ),
+      http.get(`${BASE}/admin/processes`, () =>
+        HttpResponse.json({ processes: [], total: 0 }),
+      ),
     );
   });
 
