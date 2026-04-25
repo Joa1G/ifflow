@@ -1,4 +1,4 @@
-import { LogOut, Shield, ShieldCheck } from "lucide-react";
+import { ClipboardList, LogOut, Shield, ShieldCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -100,9 +100,15 @@ function UserMenu({ user, onLogout }: UserMenuProps) {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
+              <Link to="/admin/processes" className="cursor-pointer">
+                <ClipboardList className="mr-2 h-4 w-4" aria-hidden />
+                Processos (Admin)
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link to="/admin/users" className="cursor-pointer">
                 <Shield className="mr-2 h-4 w-4" aria-hidden />
-                Painel Admin
+                Usuários pendentes
               </Link>
             </DropdownMenuItem>
           </>

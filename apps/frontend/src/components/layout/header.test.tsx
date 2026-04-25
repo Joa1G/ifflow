@@ -116,14 +116,17 @@ describe("<Header />", () => {
     expect(screen.getByText(baseUser.email)).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Sair/i })).toBeInTheDocument();
     expect(
-      screen.queryByRole("menuitem", { name: /Painel Admin/i }),
+      screen.queryByRole("menuitem", { name: /Usuários pendentes/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Processos \(Admin\)/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Gerenciar papéis/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("com user ADMIN: mostra link Painel Admin mas não Gerenciar papéis", async () => {
+  it("com user ADMIN: mostra links admin mas não Gerenciar papéis", async () => {
     const user = userEvent.setup();
     setUser({ ...baseUser, role: "ADMIN" });
     renderHeader();
@@ -131,14 +134,17 @@ describe("<Header />", () => {
     await user.click(screen.getByRole("button", { name: /Menu do usuário/i }));
 
     expect(
-      await screen.findByRole("menuitem", { name: /Painel Admin/i }),
+      await screen.findByRole("menuitem", { name: /Processos \(Admin\)/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Usuários pendentes/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Gerenciar papéis/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("com user SUPER_ADMIN: mostra Painel Admin e Gerenciar papéis", async () => {
+  it("com user SUPER_ADMIN: mostra links admin e Gerenciar papéis", async () => {
     const user = userEvent.setup();
     setUser({ ...baseUser, role: "SUPER_ADMIN" });
     renderHeader();
@@ -146,7 +152,10 @@ describe("<Header />", () => {
     await user.click(screen.getByRole("button", { name: /Menu do usuário/i }));
 
     expect(
-      await screen.findByRole("menuitem", { name: /Painel Admin/i }),
+      await screen.findByRole("menuitem", { name: /Processos \(Admin\)/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Usuários pendentes/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: /Gerenciar papéis/i }),
