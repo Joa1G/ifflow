@@ -503,7 +503,7 @@ def get_process_full_flow(
     verem fluxos de processos DRAFT/IN_REVIEW/ARCHIVED.
     """
     statement = select(Process).where(Process.id == process_id)
-    
+
     if require_published:
         statement = statement.where(Process.status == ProcessStatus.PUBLISHED)
 
