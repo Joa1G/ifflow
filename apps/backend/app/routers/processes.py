@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.core.dependencies import get_current_user_payload
-from app.core.enums import ProcessCategory
+from app.core.enums import ProcessCategory, UserRole
+from app.core.security import TokenPayload
 from app.database import get_session
 from app.schemas.process import (
     FlowStepRead,
@@ -80,10 +81,10 @@ def get_process_detail(
 @router.get(
     "/{process_id}/flow",
     response_model=ProcessFullFlow,
-    dependencies=[Depends(get_current_user_payload)],
 )
 def get_process_flow(
     process_id: UUID,
+    auth: TokenPayload = Depends(get_current_user_payload),
     session: Session = Depends(get_session),
 ) -> ProcessFullFlow:
     """Retorna o fluxo completo do processo. Exige autenticacao (ADR-006).
@@ -92,7 +93,10 @@ def get_process_flow(
     `get_current_user` (SELECT no banco) pra manter o endpoint barato — aqui
     so importa que o token e valido, nao os dados do User.
     """
-    process = process_service.get_process_full_flow(session, process_id)
+    is_admin = auth.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    process = process_service.get_process_full_flow(
+        session, process_id, require_published=not is_admin
+    )
 
     # Ordena por order_index em Python — a lista ja esta carregada (selectinload)
     # e as tabelas tem poucos steps por processo; ORDER BY na query exigiria
