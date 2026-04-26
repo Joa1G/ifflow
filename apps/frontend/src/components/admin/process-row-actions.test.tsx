@@ -66,11 +66,14 @@ beforeEach(() => {
 
 afterEach(() => server.resetHandlers());
 
-function renderActions(status: ProcessStatus) {
+function renderActions(
+  status: ProcessStatus,
+  mode: "admin" | "owner" = "admin",
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <ProcessRowActions process={makeProcess(status)} />
+        <ProcessRowActions process={makeProcess(status)} mode={mode} />
         <Toaster />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -157,11 +160,11 @@ describe("<ProcessRowActions />", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("Submeter para revisão chama POST /admin/processes/:id/submit-for-review", async () => {
+  it("Submeter para revisão chama POST /processes/:id/submit-for-review", async () => {
     let called = false;
     server.use(
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/submit-for-review`,
+        `${BASE}/processes/${PROCESS_ID}/submit-for-review`,
         () => {
           called = true;
           return HttpResponse.json({
@@ -184,7 +187,7 @@ describe("<ProcessRowActions />", () => {
   it("clicar em Arquivar abre AlertDialog antes de chamar a API", async () => {
     let called = false;
     server.use(
-      http.delete(`${BASE}/admin/processes/${PROCESS_ID}`, () => {
+      http.delete(`${BASE}/processes/${PROCESS_ID}`, () => {
         called = true;
         return HttpResponse.json({
           ...makeProcess("PUBLISHED"),
@@ -208,5 +211,70 @@ describe("<ProcessRowActions />", () => {
     );
 
     await waitFor(() => expect(called).toBe(true));
+  });
+});
+
+describe('<ProcessRowActions mode="owner" />', () => {
+  it("DRAFT em owner: Edit aponta para /processes/:id/edit, com Submeter e Arquivar", async () => {
+    renderActions("DRAFT", "owner");
+    await openMenu();
+
+    const editar = screen.getByRole("menuitem", { name: /Editar/i });
+    expect(editar).toHaveAttribute("href", `/processes/${PROCESS_ID}/edit`);
+    expect(
+      screen.getByRole("menuitem", { name: /Submeter para revisão/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Aprovar publicação/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Retirar da revisão/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Arquivar/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("IN_REVIEW em owner: clicar em Retirar da revisão chama POST /processes/:id/withdraw", async () => {
+    let called = false;
+    server.use(
+      http.post(`${BASE}/processes/${PROCESS_ID}/withdraw`, () => {
+        called = true;
+        return HttpResponse.json({
+          ...makeProcess("IN_REVIEW"),
+          status: "DRAFT",
+        });
+      }),
+    );
+
+    renderActions("IN_REVIEW", "owner");
+    const user = await openMenu();
+    expect(
+      screen.queryByRole("menuitem", { name: /Aprovar publicação/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("menuitem", { name: /Retirar da revisão/i }),
+    );
+
+    await waitFor(() => expect(called).toBe(true));
+  });
+
+  it("PUBLISHED em owner: não mostra Arquivar (só admin pode)", async () => {
+    renderActions("PUBLISHED", "owner");
+    await openMenu();
+
+    expect(
+      screen.getByRole("menuitem", { name: /Editar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Arquivar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Submeter para revisão/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Aprovar publicação/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -15,13 +15,22 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { ProcessRowActions } from "./process-row-actions";
+import {
+  ProcessRowActions,
+  type ProcessRowMode,
+} from "./process-row-actions";
 import { ProcessStatusBadge } from "./process-status-badge";
 
 type ProcessAdminView = components["schemas"]["ProcessAdminView"];
 
 interface AdminProcessesTableProps {
   processes: ProcessAdminView[];
+  /**
+   * Define o destino do link de edição e quais ações o dropdown da
+   * linha mostra. `"admin"` (default) mantém o comportamento da página
+   * de moderação; `"owner"` é usado em /processes/mine.
+   */
+  mode?: ProcessRowMode;
 }
 
 /**
@@ -35,7 +44,12 @@ interface AdminProcessesTableProps {
  * O título da linha é sempre um <Link> para o editor — reduz fricção
  * do fluxo mais comum (editar) sem precisar abrir o dropdown de ações.
  */
-export function AdminProcessesTable({ processes }: AdminProcessesTableProps) {
+export function AdminProcessesTable({
+  processes,
+  mode = "admin",
+}: AdminProcessesTableProps) {
+  const editHref = (id: string) =>
+    mode === "owner" ? `/processes/${id}/edit` : `/admin/processes/${id}/edit`;
   return (
     <>
       {/* Mobile: lista de cards */}
@@ -47,11 +61,11 @@ export function AdminProcessesTable({ processes }: AdminProcessesTableProps) {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <ProcessStatusBadge status={process.status} />
-              <ProcessRowActions process={process} />
+              <ProcessRowActions process={process} mode={mode} />
             </div>
 
             <Link
-              to={`/admin/processes/${process.id}/edit`}
+              to={editHref(process.id)}
               className="block font-serif text-base font-medium leading-tight text-ifflow-ink underline-offset-4 hover:underline focus-visible:underline"
             >
               {process.title}
@@ -117,7 +131,7 @@ export function AdminProcessesTable({ processes }: AdminProcessesTableProps) {
               >
                 <TableCell className="max-w-md">
                   <Link
-                    to={`/admin/processes/${process.id}/edit`}
+                    to={editHref(process.id)}
                     className="font-serif text-[15px] font-medium text-ifflow-ink underline-offset-4 hover:underline focus-visible:underline"
                   >
                     {process.title}
@@ -147,7 +161,7 @@ export function AdminProcessesTable({ processes }: AdminProcessesTableProps) {
                   {formatRelativeTime(process.updated_at)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <ProcessRowActions process={process} />
+                  <ProcessRowActions process={process} mode={mode} />
                 </TableCell>
               </TableRow>
             ))}

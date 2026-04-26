@@ -61,11 +61,11 @@ describe("<AddResourceInlineForm />", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("expandido, submete POST /admin/processes/:id/steps/:stepId/resources com os campos válidos", async () => {
+  it("expandido, submete POST /processes/:id/steps/:stepId/resources com os campos válidos", async () => {
     let receivedBody: Record<string, unknown> | null = null;
     server.use(
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
+        `${BASE}/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
         async ({ request }) => {
           receivedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json({

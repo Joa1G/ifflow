@@ -4,6 +4,7 @@ import {
   Loader2,
   MoreHorizontal,
   Pencil,
+  RotateCcw,
   Send,
 } from "lucide-react";
 import { useState } from "react";
@@ -14,8 +15,9 @@ import {
   useApproveProcess,
   useArchiveProcess,
   useSubmitProcessForReview,
-} from "../../hooks/use-admin-processes";
-import type { ApiError } from "../../lib/api-error";
+  useWithdrawProcess,
+} from "../../hooks/use-processes-management";
+import { transitionErrorMessage } from "../../lib/transition-error-message";
 import type { components } from "../../types/api";
 import {
   AlertDialog,
@@ -38,22 +40,16 @@ import {
 
 type ProcessAdminView = components["schemas"]["ProcessAdminView"];
 
+export type ProcessRowMode = "admin" | "owner";
+
 interface ProcessRowActionsProps {
   process: ProcessAdminView;
-}
-
-// Códigos específicos das transições; o backend devolve mensagens em
-// pt-BR, mas alguns códigos justificam um texto contextual mais claro.
-function transitionErrorMessage(err: ApiError, fallback: string): string {
-  switch (err.code) {
-    case "PROCESS_NOT_FOUND":
-      return "Processo não encontrado. A lista foi atualizada.";
-    case "PROCESS_INVALID_STATUS":
-    case "INVALID_STATUS_TRANSITION":
-      return "O processo já mudou de estado. Atualizando a lista…";
-    default:
-      return err.message || fallback;
-  }
+  /**
+   * Quem está olhando a linha. Define quais transições aparecem e para
+   * onde o link de edição aponta. Default `"admin"` para compatibilidade
+   * com a página de moderação que já usa este componente.
+   */
+  mode?: ProcessRowMode;
 }
 
 /**
@@ -69,16 +65,21 @@ function transitionErrorMessage(err: ApiError, fallback: string): string {
  * - Arquivar abre AlertDialog conforme DESIGN_SYSTEM ("Modal de
  *   confirmação destrutiva"), com texto institucional explicando o efeito.
  */
-export function ProcessRowActions({ process }: ProcessRowActionsProps) {
+export function ProcessRowActions({
+  process,
+  mode = "admin",
+}: ProcessRowActionsProps) {
   const [archiveOpen, setArchiveOpen] = useState(false);
 
   const submitMutation = useSubmitProcessForReview();
   const approveMutation = useApproveProcess();
+  const withdrawMutation = useWithdrawProcess();
   const archiveMutation = useArchiveProcess();
 
   const isPending =
     submitMutation.isPending ||
     approveMutation.isPending ||
+    withdrawMutation.isPending ||
     archiveMutation.isPending;
 
   const handleSubmit = () => {
@@ -130,9 +131,40 @@ export function ProcessRowActions({ process }: ProcessRowActionsProps) {
     );
   };
 
+  const handleWithdraw = () => {
+    withdrawMutation.mutate(
+      { processId: process.id },
+      {
+        onSuccess: () =>
+          toast.success(
+            `"${process.title}" voltou para rascunho. Ajuste e re-submeta.`,
+          ),
+        onError: (err) =>
+          toast.error(
+            transitionErrorMessage(
+              err,
+              "Não foi possível retirar da revisão.",
+            ),
+          ),
+      },
+    );
+  };
+
+  const isOwner = mode === "owner";
+  const editHref = isOwner
+    ? `/processes/${process.id}/edit`
+    : `/admin/processes/${process.id}/edit`;
+
   const canSubmit = process.status === "DRAFT";
-  const canApprove = process.status === "IN_REVIEW";
-  const canArchive = process.status !== "ARCHIVED";
+  // Approve só faz sentido na visão de moderação; autor não aprova o
+  // próprio processo. Withdraw é o inverso: só do autor.
+  const canApprove = !isOwner && process.status === "IN_REVIEW";
+  const canWithdraw = isOwner && process.status === "IN_REVIEW";
+  // Autor não consegue arquivar processos PUBLISHED (backend devolve
+  // PROCESS_ARCHIVE_REQUIRES_ADMIN); admin arquiva qualquer não-arquivado.
+  const canArchive = isOwner
+    ? process.status === "DRAFT" || process.status === "IN_REVIEW"
+    : process.status !== "ARCHIVED";
 
   return (
     <>
@@ -154,18 +186,27 @@ export function ProcessRowActions({ process }: ProcessRowActionsProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem asChild>
-            <Link to={`/admin/processes/${process.id}/edit`}>
+            <Link to={editHref}>
               <Pencil className="mr-2 h-4 w-4" aria-hidden />
               Editar
             </Link>
           </DropdownMenuItem>
 
-          {(canSubmit || canApprove) && <DropdownMenuSeparator />}
+          {(canSubmit || canApprove || canWithdraw) && (
+            <DropdownMenuSeparator />
+          )}
 
           {canSubmit && (
             <DropdownMenuItem onSelect={handleSubmit}>
               <Send className="mr-2 h-4 w-4" aria-hidden />
               Submeter para revisão
+            </DropdownMenuItem>
+          )}
+
+          {canWithdraw && (
+            <DropdownMenuItem onSelect={handleWithdraw}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
+              Retirar da revisão
             </DropdownMenuItem>
           )}
 

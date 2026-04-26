@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   useDeleteStep,
   useUpdateStep,
-} from "../../hooks/use-admin-processes";
+} from "../../hooks/use-processes-management";
 import type { components } from "../../types/api";
 import {
   AlertDialog,
@@ -29,6 +29,11 @@ interface AdminStepCardProps {
   /** Step imediatamente abaixo na ordem atual, se houver. */
   nextStep: FlowStepRead | null;
   onEdit: (step: FlowStepRead) => void;
+  /**
+   * Quando `false`, esconde reorder/edit/remove. Default `true` para
+   * compatibilidade com call sites antigos.
+   */
+  editable?: boolean;
 }
 
 /**
@@ -45,6 +50,7 @@ export function AdminStepCard({
   previousStep,
   nextStep,
   onEdit,
+  editable = true,
 }: AdminStepCardProps) {
   const updateMutation = useUpdateStep();
   const deleteMutation = useDeleteStep();
@@ -111,78 +117,82 @@ export function AdminStepCard({
         </dl>
       </div>
 
-      <div className="flex flex-col items-end gap-1.5">
-        <div className="flex gap-0.5 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Mover etapa ${step.order} para cima`}
-            disabled={isFirst || updateMutation.isPending}
-            onClick={() => previousStep && swap(previousStep)}
-          >
-            <ArrowUp className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Mover etapa ${step.order} para baixo`}
-            disabled={isLast || updateMutation.isPending}
-            onClick={() => nextStep && swap(nextStep)}
-          >
-            <ArrowDown className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <div className="flex gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(step)}
-          >
-            <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
-            Editar
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                {deleteMutation.isPending ? (
-                  <Loader2 aria-hidden className="mr-1 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 aria-hidden className="mr-1 h-3.5 w-3.5" />
-                )}
-                Remover
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="font-serif">
-                  Remover esta etapa?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Os recursos vinculados a “{step.title}” também serão removidos.
-                  Esta ação não pode ser desfeita.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      {editable ? (
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-0.5 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Mover etapa ${step.order} para cima`}
+              disabled={isFirst || updateMutation.isPending}
+              onClick={() => previousStep && swap(previousStep)}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Mover etapa ${step.order} para baixo`}
+              disabled={isLast || updateMutation.isPending}
+              onClick={() => nextStep && swap(nextStep)}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onEdit(step)}
+            >
+              <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
+              Editar
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  Remover etapa
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  {deleteMutation.isPending ? (
+                    <Loader2 aria-hidden className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 aria-hidden className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  Remover
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-serif">
+                    Remover esta etapa?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Os recursos vinculados a “{step.title}” também serão removidos.
+                    Esta ação não pode ser desfeita.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Remover etapa
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div aria-hidden />
+      )}
     </li>
   );
 }

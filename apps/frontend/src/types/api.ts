@@ -228,116 +228,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Processes */
+        /**
+         * List Processes
+         * @description Listagem de moderacao — admin ve TODOS os processos, qualquer autor.
+         */
         get: operations["list_processes_admin_processes_get"];
         put?: never;
-        /** Create Process */
-        post: operations["create_process_admin_processes_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/processes/{process_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Process */
-        get: operations["get_process_admin_processes__process_id__get"];
-        put?: never;
         post?: never;
-        /** Archive Process */
-        delete: operations["archive_process_admin_processes__process_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Process */
-        patch: operations["update_process_admin_processes__process_id__patch"];
-        trace?: never;
-    };
-    "/admin/processes/{process_id}/steps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Step */
-        post: operations["create_step_admin_processes__process_id__steps_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/processes/{process_id}/steps/{step_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Step */
-        delete: operations["delete_step_admin_processes__process_id__steps__step_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Step */
-        patch: operations["update_step_admin_processes__process_id__steps__step_id__patch"];
-        trace?: never;
-    };
-    "/admin/processes/{process_id}/steps/{step_id}/resources": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Resource */
-        post: operations["create_resource_admin_processes__process_id__steps__step_id__resources_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/processes/{process_id}/steps/{step_id}/resources/{resource_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Resource */
-        delete: operations["delete_resource_admin_processes__process_id__steps__step_id__resources__resource_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/processes/{process_id}/submit-for-review": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Submit For Review */
-        post: operations["submit_for_review_admin_processes__process_id__submit_for_review_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -371,6 +268,30 @@ export interface paths {
         /** List Processes */
         get: operations["list_processes_processes_get"];
         put?: never;
+        /** Create Process */
+        post: operations["create_process_processes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Processes
+         * @description Processos cujo `created_by` e o usuario autenticado.
+         *
+         *     Aceita o param `status_filter` (renomeado para nao colidir com o `status`
+         *     importado de fastapi); exposto na query string como `?status_filter=DRAFT`.
+         */
+        get: operations["list_my_processes_processes_mine_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -389,10 +310,12 @@ export interface paths {
         get: operations["get_process_detail_processes__process_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Archive Process */
+        delete: operations["archive_process_processes__process_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Process */
+        patch: operations["update_process_processes__process_id__patch"];
         trace?: never;
     };
     "/processes/{process_id}/flow": {
@@ -413,6 +336,140 @@ export interface paths {
         get: operations["get_process_flow_processes__process_id__flow_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/management": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Process Management
+         * @description Visao completa para autor ou admin gerenciar o processo.
+         *
+         *     Diferente de GET /processes/{id} (publico, so PUBLISHED), esse devolve
+         *     qualquer status. A checagem ownership-or-admin esta em
+         *     `get_process_for_management` no service.
+         */
+        get: operations["get_process_management_processes__process_id__management_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Step */
+        post: operations["create_step_processes__process_id__steps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/steps/{step_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Step */
+        delete: operations["delete_step_processes__process_id__steps__step_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Step */
+        patch: operations["update_step_processes__process_id__steps__step_id__patch"];
+        trace?: never;
+    };
+    "/processes/{process_id}/steps/{step_id}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Resource */
+        post: operations["create_resource_processes__process_id__steps__step_id__resources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/steps/{step_id}/resources/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Resource */
+        delete: operations["delete_resource_processes__process_id__steps__step_id__resources__resource_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/submit-for-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit For Review */
+        post: operations["submit_for_review_processes__process_id__submit_for_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw From Review
+         * @description IN_REVIEW -> DRAFT. Autor (ou admin) chama para destravar a edicao.
+         *
+         *     Endpoint dedicado em vez de PATCH status: deixa explicito no contrato
+         *     que essa e uma transicao de status (gera log, podera disparar
+         *     notificacao no futuro) e nao um campo arbitrario do recurso.
+         */
+        post: operations["withdraw_from_review_processes__process_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -734,7 +791,13 @@ export interface components {
         };
         /**
          * ProcessAdminView
-         * @description Visao admin — usada nos endpoints /admin/processes e derivados.
+         * @description Visao "gestao" — usada por endpoints onde autor e admin precisam ver
+         *     metadados completos (status, audit, qualquer status de processo).
+         *
+         *     Mantem o nome historico "Admin" porque vai gerado no OpenAPI e o frontend
+         *     ja referencia esse type. Hoje tambem e usado pelo dono nao-admin em
+         *     /processes/mine e /processes/{id}/management — a "visao admin" virou "visao
+         *     de quem tem permissao para gerenciar o processo".
          */
         ProcessAdminView: {
             /**
@@ -901,8 +964,12 @@ export interface components {
             /** Requirements */
             requirements?: string[] | null;
         };
-        /** ProcessesAdminListResponse */
-        ProcessesAdminListResponse: {
+        /**
+         * ProcessesManagementListResponse
+         * @description Envelope compartilhado entre GET /admin/processes (admin ve tudo) e
+         *     GET /processes/mine (autor ve so os proprios).
+         */
+        ProcessesManagementListResponse: {
             /** Processes */
             processes: components["schemas"]["ProcessAdminView"][];
             /** Total */
@@ -1522,336 +1589,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProcessesAdminListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_process_admin_processes_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProcessCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProcessAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_process_admin_processes__process_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProcessAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    archive_process_admin_processes__process_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProcessAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_process_admin_processes__process_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProcessUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProcessAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_step_admin_processes__process_id__steps_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FlowStepCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FlowStepAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_step_admin_processes__process_id__steps__step_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-                step_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_step_admin_processes__process_id__steps__step_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-                step_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FlowStepUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FlowStepAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_resource_admin_processes__process_id__steps__step_id__resources_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-                step_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StepResourceCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StepResourceAdminView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_resource_admin_processes__process_id__steps__step_id__resources__resource_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-                step_id: string;
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_for_review_admin_processes__process_id__submit_for_review_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                process_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProcessAdminView"];
+                    "application/json": components["schemas"]["ProcessesManagementListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1928,6 +1666,71 @@ export interface operations {
             };
         };
     };
+    create_process_processes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProcessCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_processes_processes_mine_get: {
+        parameters: {
+            query?: {
+                status_filter?: components["schemas"]["ProcessStatus"] | null;
+                category?: components["schemas"]["ProcessCategory"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessesManagementListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_process_detail_processes__process_id__get: {
         parameters: {
             query?: never;
@@ -1959,6 +1762,72 @@ export interface operations {
             };
         };
     };
+    archive_process_processes__process_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_process_processes__process_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProcessUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_process_flow_processes__process_id__flow_get: {
         parameters: {
             query?: never;
@@ -1977,6 +1846,267 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProcessFullFlow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_process_management_processes__process_id__management_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_step_processes__process_id__steps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlowStepCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowStepAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_step_processes__process_id__steps__step_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_step_processes__process_id__steps__step_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlowStepUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowStepAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_resource_processes__process_id__steps__step_id__resources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepResourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepResourceAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_resource_processes__process_id__steps__step_id__resources__resource_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_for_review_processes__process_id__submit_for_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_from_review_processes__process_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
                 };
             };
             /** @description Validation Error */

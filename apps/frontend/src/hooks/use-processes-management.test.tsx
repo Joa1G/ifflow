@@ -17,8 +17,7 @@ import { __resetApiClientForTests } from "../lib/api-client";
 import { useAuthStore, wireAuthStoreToApiClient } from "../stores/auth-store";
 import {
   adminProcessesListQueryKey,
-  adminProcessQueryKey,
-  useAdminProcess,
+  processManagementQueryKey,
   useAdminProcessesList,
   useApproveProcess,
   useArchiveProcess,
@@ -27,10 +26,12 @@ import {
   useCreateStep,
   useDeleteResource,
   useDeleteStep,
+  useProcessForManagement,
   useSubmitProcessForReview,
   useUpdateProcess,
   useUpdateStep,
-} from "./use-admin-processes";
+  useWithdrawProcess,
+} from "./use-processes-management";
 
 const BASE = "http://localhost:8000";
 const PROCESS_ID = "11111111-1111-4111-8111-111111111111";
@@ -102,33 +103,35 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-describe("useAdminProcess", () => {
-  it("busca o processo via GET /admin/processes/:id", async () => {
+describe("useProcessForManagement", () => {
+  it("busca o processo via GET /processes/:id/management", async () => {
     server.use(
-      http.get(`${BASE}/admin/processes/${PROCESS_ID}`, () =>
+      http.get(`${BASE}/processes/${PROCESS_ID}/management`, () =>
         HttpResponse.json(adminProcessPayload),
       ),
     );
-    const { result } = renderHook(() => useAdminProcess(PROCESS_ID), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useProcessForManagement(PROCESS_ID),
+      { wrapper },
+    );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.id).toBe(PROCESS_ID);
   });
 
   it("não dispara requisição quando processId é undefined", () => {
-    const { result } = renderHook(() => useAdminProcess(undefined), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useProcessForManagement(undefined),
+      { wrapper },
+    );
     expect(result.current.fetchStatus).toBe("idle");
   });
 });
 
 describe("useCreateProcess", () => {
-  it("envia POST /admin/processes e retorna o processo criado", async () => {
+  it("envia POST /processes e retorna o processo criado", async () => {
     let receivedBody: unknown = null;
     server.use(
-      http.post(`${BASE}/admin/processes`, async ({ request }) => {
+      http.post(`${BASE}/processes`, async ({ request }) => {
         receivedBody = await request.json();
         return HttpResponse.json(adminProcessPayload);
       }),
@@ -151,15 +154,15 @@ describe("useCreateProcess", () => {
 });
 
 describe("useUpdateProcess", () => {
-  it("envia PATCH /admin/processes/:id e invalida cache", async () => {
+  it("envia PATCH /processes/:id e invalida cache", async () => {
     server.use(
-      http.patch(`${BASE}/admin/processes/${PROCESS_ID}`, () =>
+      http.patch(`${BASE}/processes/${PROCESS_ID}`, () =>
         HttpResponse.json(adminProcessPayload),
       ),
     );
 
     queryClient.setQueryData(
-      adminProcessQueryKey(PROCESS_ID),
+      processManagementQueryKey(PROCESS_ID),
       adminProcessPayload,
     );
 
@@ -171,17 +174,17 @@ describe("useUpdateProcess", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(
-      queryClient.getQueryState(adminProcessQueryKey(PROCESS_ID))?.isInvalidated,
+      queryClient.getQueryState(processManagementQueryKey(PROCESS_ID))?.isInvalidated,
     ).toBe(true);
   });
 });
 
 describe("useCreateStep / useUpdateStep / useDeleteStep", () => {
-  it("create envia POST /admin/processes/:id/steps com sector_id+order", async () => {
+  it("create envia POST /processes/:id/steps com sector_id+order", async () => {
     let body: unknown = null;
     server.use(
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps`,
+        `${BASE}/processes/${PROCESS_ID}/steps`,
         async ({ request }) => {
           body = await request.json();
           return HttpResponse.json(stepPayload);
@@ -206,11 +209,11 @@ describe("useCreateStep / useUpdateStep / useDeleteStep", () => {
     expect(body).toMatchObject({ sector_id: SECTOR_ID, order: 1 });
   });
 
-  it("update envia PATCH /admin/processes/:id/steps/:step_id", async () => {
+  it("update envia PATCH /processes/:id/steps/:step_id", async () => {
     let url = "";
     server.use(
       http.patch(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps/${STEP_ID}`,
+        `${BASE}/processes/${PROCESS_ID}/steps/${STEP_ID}`,
         ({ request }) => {
           url = request.url;
           return HttpResponse.json(stepPayload);
@@ -227,20 +230,20 @@ describe("useCreateStep / useUpdateStep / useDeleteStep", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(new URL(url).pathname).toBe(
-      `/admin/processes/${PROCESS_ID}/steps/${STEP_ID}`,
+      `/processes/${PROCESS_ID}/steps/${STEP_ID}`,
     );
   });
 
   it("delete envia DELETE no endpoint correto e invalida o cache", async () => {
     server.use(
       http.delete(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps/${STEP_ID}`,
+        `${BASE}/processes/${PROCESS_ID}/steps/${STEP_ID}`,
         () => new HttpResponse(null, { status: 204 }),
       ),
     );
 
     queryClient.setQueryData(
-      adminProcessQueryKey(PROCESS_ID),
+      processManagementQueryKey(PROCESS_ID),
       adminProcessPayload,
     );
 
@@ -249,7 +252,7 @@ describe("useCreateStep / useUpdateStep / useDeleteStep", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(
-      queryClient.getQueryState(adminProcessQueryKey(PROCESS_ID))?.isInvalidated,
+      queryClient.getQueryState(processManagementQueryKey(PROCESS_ID))?.isInvalidated,
     ).toBe(true);
   });
 });
@@ -260,7 +263,7 @@ describe("useCreateResource / useDeleteResource", () => {
     let body: unknown = null;
     server.use(
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
+        `${BASE}/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
         async ({ request }) => {
           url = request.url;
           body = await request.json();
@@ -282,7 +285,7 @@ describe("useCreateResource / useDeleteResource", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(new URL(url).pathname).toBe(
-      `/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
+      `/processes/${PROCESS_ID}/steps/${STEP_ID}/resources`,
     );
     expect(body).toMatchObject({ type: "DOCUMENT" });
   });
@@ -291,7 +294,7 @@ describe("useCreateResource / useDeleteResource", () => {
     let url = "";
     server.use(
       http.delete(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources/${RESOURCE_ID}`,
+        `${BASE}/processes/${PROCESS_ID}/steps/${STEP_ID}/resources/${RESOURCE_ID}`,
         ({ request }) => {
           url = request.url;
           return new HttpResponse(null, { status: 204 });
@@ -308,7 +311,7 @@ describe("useCreateResource / useDeleteResource", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(new URL(url).pathname).toBe(
-      `/admin/processes/${PROCESS_ID}/steps/${STEP_ID}/resources/${RESOURCE_ID}`,
+      `/processes/${PROCESS_ID}/steps/${STEP_ID}/resources/${RESOURCE_ID}`,
     );
   });
 });
@@ -358,14 +361,14 @@ describe("useSubmitProcessForReview", () => {
   it("envia POST submit-for-review e invalida lista + detalhe", async () => {
     server.use(
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/submit-for-review`,
+        `${BASE}/processes/${PROCESS_ID}/submit-for-review`,
         () =>
           HttpResponse.json({ ...adminProcessPayload, status: "IN_REVIEW" }),
       ),
     );
 
     queryClient.setQueryData(
-      adminProcessQueryKey(PROCESS_ID),
+      processManagementQueryKey(PROCESS_ID),
       adminProcessPayload,
     );
     queryClient.setQueryData(adminProcessesListQueryKey(), {
@@ -380,8 +383,45 @@ describe("useSubmitProcessForReview", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(
-      queryClient.getQueryState(adminProcessQueryKey(PROCESS_ID))
+      queryClient.getQueryState(processManagementQueryKey(PROCESS_ID))
         ?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
+  });
+});
+
+describe("useWithdrawProcess", () => {
+  it("envia POST /processes/:id/withdraw e invalida lista do autor + moderação", async () => {
+    server.use(
+      http.post(`${BASE}/processes/${PROCESS_ID}/withdraw`, () =>
+        HttpResponse.json({ ...adminProcessPayload, status: "DRAFT" }),
+      ),
+    );
+
+    // O bucket "my-processes" é o que a página /processes/mine usa; o
+    // withdraw precisa derrubar ambos para refletir o novo status.
+    queryClient.setQueryData(
+      processManagementQueryKey(PROCESS_ID),
+      adminProcessPayload,
+    );
+    queryClient.setQueryData(["my-processes", {}], {
+      processes: [adminProcessPayload],
+      total: 1,
+    });
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [adminProcessPayload],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useWithdrawProcess(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.status).toBe("DRAFT");
+    expect(
+      queryClient.getQueryState(["my-processes", {}])?.isInvalidated,
     ).toBe(true);
     expect(
       queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
@@ -418,9 +458,9 @@ describe("useApproveProcess", () => {
 });
 
 describe("useArchiveProcess", () => {
-  it("envia DELETE /admin/processes/:id e invalida caches", async () => {
+  it("envia DELETE /processes/:id e invalida caches", async () => {
     server.use(
-      http.delete(`${BASE}/admin/processes/${PROCESS_ID}`, () =>
+      http.delete(`${BASE}/processes/${PROCESS_ID}`, () =>
         HttpResponse.json({ ...adminProcessPayload, status: "ARCHIVED" }),
       ),
     );

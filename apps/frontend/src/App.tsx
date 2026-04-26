@@ -9,6 +9,7 @@ import AdminUsersPage from "./pages/admin/users";
 import ForbiddenPage from "./pages/forbidden";
 import HomePage from "./pages/home";
 import LoginPage from "./pages/login";
+import MyProcessesPage from "./pages/my-processes";
 import NotFoundPage from "./pages/not-found";
 import PendingPage from "./pages/pending";
 import ProcessDetailPage from "./pages/process-detail";
@@ -46,7 +47,31 @@ function AppShell() {
           path="/reset-password/confirm"
           element={<ResetPasswordConfirmPage />}
         />
+        <Route
+          path="/processes/new"
+          element={
+            <ProtectedRoute>
+              <ProcessEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/processes/mine"
+          element={
+            <ProtectedRoute>
+              <MyProcessesPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/processes/:id" element={<ProcessDetailPage />} />
+        <Route
+          path="/processes/:id/edit"
+          element={
+            <ProtectedRoute>
+              <ProcessEditorPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/processes/:id/flow"
           element={

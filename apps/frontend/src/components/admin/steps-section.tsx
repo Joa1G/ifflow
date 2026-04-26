@@ -13,6 +13,12 @@ interface StepsSectionProps {
   processId: string;
   steps: FlowStepRead[] | undefined;
   isLoading: boolean;
+  /**
+   * Quando `false`, esconde os CTAs de editar/criar etapa. Default `true`
+   * para manter o comportamento dos call sites antigos. O bloqueio em
+   * status !== DRAFT é decidido pela página pai.
+   */
+  editable?: boolean;
 }
 
 /**
@@ -25,6 +31,7 @@ export function StepsSection({
   processId,
   steps,
   isLoading,
+  editable = true,
 }: StepsSectionProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<FlowStepRead | null>(null);
@@ -70,21 +77,26 @@ export function StepsSection({
             Sem etapas cadastradas
           </h3>
           <p className="mt-2 max-w-sm text-sm text-ifflow-muted">
-            Adicione a primeira etapa do fluxo para começar. Você poderá
-            reordenar e editar a qualquer momento antes de submeter para revisão.
+            {editable
+              ? "Adicione a primeira etapa do fluxo para começar. Você poderá reordenar e editar a qualquer momento antes de submeter para revisão."
+              : "Este processo ainda não tem etapas cadastradas."}
           </p>
-          <Button className="mt-6" onClick={openCreate}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Nova etapa
-          </Button>
+          {editable ? (
+            <Button className="mt-6" onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Nova etapa
+            </Button>
+          ) : null}
         </div>
-        <StepEditorDialog
-          processId={processId}
-          step={editing}
-          nextOrder={nextOrder}
-          open={editorOpen}
-          onOpenChange={setEditorOpen}
-        />
+        {editable ? (
+          <StepEditorDialog
+            processId={processId}
+            step={editing}
+            nextOrder={nextOrder}
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+          />
+        ) : null}
       </>
     );
   }
@@ -105,6 +117,7 @@ export function StepsSection({
               index < sortedSteps.length - 1 ? sortedSteps[index + 1]! : null
             }
             onEdit={openEdit}
+            editable={editable}
           />
         ))}
       </ol>
@@ -113,18 +126,22 @@ export function StepsSection({
           {sortedSteps.length}{" "}
           {sortedSteps.length === 1 ? "etapa cadastrada" : "etapas cadastradas"}
         </p>
-        <Button onClick={openCreate}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Nova etapa
-        </Button>
+        {editable ? (
+          <Button onClick={openCreate}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Nova etapa
+          </Button>
+        ) : null}
       </div>
-      <StepEditorDialog
-        processId={processId}
-        step={editing}
-        nextOrder={nextOrder}
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-      />
+      {editable ? (
+        <StepEditorDialog
+          processId={processId}
+          step={editing}
+          nextOrder={nextOrder}
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+        />
+      ) : null}
     </>
   );
 }

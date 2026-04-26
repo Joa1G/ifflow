@@ -311,14 +311,14 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "Processos administrativos",
+        name: "Moderação de processos",
       }),
     ).toBeInTheDocument();
-    // Empty state aparece após a query resolver com lista vazia.
+    // Default IN_REVIEW + lista vazia → empty state de fila.
     expect(
       await screen.findByRole("heading", {
         level: 3,
-        name: "Nenhum processo cadastrado",
+        name: "Nenhum processo aguardando revisão",
       }),
     ).toBeInTheDocument();
   });
@@ -338,7 +338,7 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
   it("renderiza /admin/processes/:id/edit → ProcessEditorPage modo edit (real)", async () => {
     const PID = "11111111-1111-4111-8111-111111111111";
     server.use(
-      http.get(`${BASE}/admin/processes/${PID}`, () =>
+      http.get(`${BASE}/processes/${PID}/management`, () =>
         HttpResponse.json({
           id: PID,
           title: "Solicitação de Capacitação",
@@ -397,6 +397,144 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     );
   });
 
+  it("renderiza /processes/new → ProcessEditorPage modo create owner", async () => {
+    renderAt("/processes/new");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Novo processo/i }),
+      ).toBeInTheDocument(),
+    );
+    // Breadcrumb sem "Admin" — diferencia do mesmo editor montado em /admin/*.
+    expect(screen.getByLabelText(/Caminho/i)).toHaveTextContent(
+      /^Processos\s*\/\s*Novo$/,
+    );
+    expect(
+      screen.getByRole("button", { name: /Criar processo/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza /processes/mine → MyProcessesPage com lista do autor", async () => {
+    const PID = "44444444-4444-4444-4444-444444444444";
+    server.use(
+      http.get(`${BASE}/processes/mine`, () =>
+        HttpResponse.json({
+          processes: [
+            {
+              id: PID,
+              title: "Meu primeiro processo",
+              short_description: "Curta",
+              full_description: "Completa",
+              category: "RH",
+              estimated_time: "30 dias",
+              requirements: [],
+              status: "DRAFT",
+              access_count: 0,
+              created_by: mockSuperAdmin.id,
+              approved_by: null,
+              created_at: "2026-04-21T10:00:00Z",
+              updated_at: "2026-04-21T10:00:00Z",
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    );
+    renderAt("/processes/mine");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Meus processos",
+      }),
+    ).toBeInTheDocument();
+    // O link da linha aponta para o editor owner-mode.
+    const titleLinks = await screen.findAllByRole("link", {
+      name: /Meu primeiro processo/i,
+    });
+    expect(titleLinks[0]).toHaveAttribute("href", `/processes/${PID}/edit`);
+  });
+
+  it("renderiza /processes/:id/edit (DRAFT) → editor owner com submit ativo", async () => {
+    const PID = "55555555-5555-4555-8555-555555555555";
+    server.use(
+      http.get(`${BASE}/processes/${PID}/management`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Rascunho do autor",
+          short_description: "Curta",
+          full_description: "Descrição completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "DRAFT",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: null,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Rascunho do autor" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/processes/${PID}/edit`);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Rascunho do autor/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: /Submeter para revisão/i }),
+    ).toBeInTheDocument();
+    // Em DRAFT não há alerta de bloqueio.
+    expect(screen.queryByText(/Edição bloqueada/i)).not.toBeInTheDocument();
+  });
+
+  it("renderiza /processes/:id/edit (IN_REVIEW) → mostra lock + botão Retirar", async () => {
+    const PID = "66666666-6666-4666-8666-666666666666";
+    server.use(
+      http.get(`${BASE}/processes/${PID}/management`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Aguardando revisão",
+          short_description: "Curta",
+          full_description: "Completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "IN_REVIEW",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: null,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Aguardando revisão" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/processes/${PID}/edit`);
+    expect(
+      await screen.findByText(/Edição bloqueada/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Retirar da revisão/i }),
+    ).toBeInTheDocument();
+  });
+
   it("renderiza /processes/:id/flow → ProcessFlowPage (real)", async () => {
     server.use(
       http.get(`${BASE}/processes/abc-123/flow`, () =>
@@ -443,6 +581,13 @@ describe("<App /> — rotas protegidas sem autenticação", () => {
 
   it("redireciona /processes/:id/flow para /login", () => {
     renderAt("/processes/abc/flow");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("redireciona /processes/new para /login", () => {
+    renderAt("/processes/new");
     expect(
       screen.getByRole("heading", { level: 1, name: "Entrar" }),
     ).toBeInTheDocument();

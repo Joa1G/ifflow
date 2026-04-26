@@ -18,8 +18,8 @@ import type { components } from "../types/api";
 type ProcessAdminView = components["schemas"]["ProcessAdminView"];
 type ProcessCreate = components["schemas"]["ProcessCreate"];
 type ProcessUpdate = components["schemas"]["ProcessUpdate"];
-type ProcessesAdminListResponse =
-  components["schemas"]["ProcessesAdminListResponse"];
+type ProcessesManagementListResponse =
+  components["schemas"]["ProcessesManagementListResponse"];
 type ProcessStatus = components["schemas"]["ProcessStatus"];
 type ProcessCategory = components["schemas"]["ProcessCategory"];
 type FlowStepAdminView = components["schemas"]["FlowStepAdminView"];
@@ -34,57 +34,67 @@ export interface AdminProcessesListFilters {
 }
 
 /**
- * Hooks do editor admin de processos (F-22).
+ * Hooks de gestão de processos.
+ *
+ * Após a regra "USER cria processos / ADMIN aprova" (2026-04-25), o CRUD vive em
+ * `/processes/*` e é compartilhado entre autor e admin; `/admin/processes` ficou
+ * reduzido a moderação (lista IN_REVIEW + approve).
  *
  * Convenções:
- * - Cada mutation invalida `["admin-process", id]` no `onSettled` para que
+ * - Cada mutation invalida `["process-management", id]` no `onSettled` para que
  *   a página recarregue o estado canônico do servidor — evita UI dessincronizada
  *   quando, por exemplo, o backend incrementa `updated_at`.
- * - Resources e steps usam o mesmo bucket `["admin-process", id]` porque o
- *   endpoint admin de processo já retorna tudo embutido.
- * - `user_id` / `created_by` nunca aparecem aqui — vêm do JWT no backend.
+ * - Resources e steps usam o mesmo bucket `["process-management", id]` porque o
+ *   endpoint de management já retorna tudo embutido.
+ * - `created_by` nunca aparece no payload — vem do JWT no backend.
  */
 
-export const adminProcessQueryKey = (processId: string | undefined) =>
-  ["admin-process", processId] as const;
+export const processManagementQueryKey = (processId: string | undefined) =>
+  ["process-management", processId] as const;
 
 // Mantemos o mesmo prefixo `["admin-processes-list", ...]` para que
 // `invalidateQueries({ queryKey: ["admin-processes-list"] })` derrube
-// todas as variantes de filtro (status/category) de uma só vez.
+// todas as variantes de filtro (status/category) de uma só vez. O bucket
+// é compartilhado com `useAdminNotifications` (badge de moderação).
 export const adminProcessesListQueryKey = (
   filters: AdminProcessesListFilters = {},
 ) => ["admin-processes-list", filters] as const;
 
+export const myProcessesQueryKey = (
+  filters: AdminProcessesListFilters = {},
+) => ["my-processes", filters] as const;
+
 /**
- * Lista admin de processos (F-23) — vê todos os status, opcionalmente
- * filtrados por status e/ou category. O backend exige role ADMIN/SUPER_ADMIN.
- *
- * As contagens por status para os filtros vêm da própria lista quando
- * `filters.status` é undefined; o componente pode aplicar `Array.filter`
- * em cima do `data.processes` para popular badges sem nova requisição.
+ * Lista admin de moderação — vê todos os processos em qualquer status,
+ * opcionalmente filtrados. O backend exige role ADMIN/SUPER_ADMIN.
  */
 export function useAdminProcessesList(
   filters: AdminProcessesListFilters = {},
-): UseQueryResult<ProcessesAdminListResponse, ApiError> {
+): UseQueryResult<ProcessesManagementListResponse, ApiError> {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.category) params.set("category", filters.category);
   const qs = params.toString();
   const path = qs ? `/admin/processes?${qs}` : "/admin/processes";
 
-  return useQuery<ProcessesAdminListResponse, ApiError>({
+  return useQuery<ProcessesManagementListResponse, ApiError>({
     queryKey: adminProcessesListQueryKey(filters),
-    queryFn: () => apiGet<ProcessesAdminListResponse>(path),
+    queryFn: () => apiGet<ProcessesManagementListResponse>(path),
   });
 }
 
-export function useAdminProcess(
+/**
+ * Detalhe de um processo para edição — autor (qualquer status do próprio)
+ * ou admin (qualquer processo). O backend retorna 403 PROCESS_NOT_OWNED se
+ * o requester não for autor nem admin.
+ */
+export function useProcessForManagement(
   processId: string | undefined,
 ): UseQueryResult<ProcessAdminView, ApiError> {
   return useQuery<ProcessAdminView, ApiError>({
-    queryKey: adminProcessQueryKey(processId),
+    queryKey: processManagementQueryKey(processId),
     queryFn: () =>
-      apiGet<ProcessAdminView>(`/admin/processes/${processId}`),
+      apiGet<ProcessAdminView>(`/processes/${processId}/management`),
     enabled: Boolean(processId),
   });
 }
@@ -96,10 +106,10 @@ export function useCreateProcess(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<ProcessAdminView, ApiError, ProcessCreate>({
-    mutationFn: (body) =>
-      apiPost<ProcessAdminView>("/admin/processes", body),
+    mutationFn: (body) => apiPost<ProcessAdminView>("/processes", body),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+      queryClient.invalidateQueries({ queryKey: ["my-processes"] });
     },
   });
 }
@@ -117,12 +127,13 @@ export function useUpdateProcess(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<ProcessAdminView, ApiError, UpdateProcessInput>({
     mutationFn: ({ processId, patch }) =>
-      apiPatch<ProcessAdminView>(`/admin/processes/${processId}`, patch),
+      apiPatch<ProcessAdminView>(`/processes/${processId}`, patch),
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
       queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+      queryClient.invalidateQueries({ queryKey: ["my-processes"] });
     },
   });
 }
@@ -140,13 +151,10 @@ export function useCreateStep(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<FlowStepAdminView, ApiError, CreateStepInput>({
     mutationFn: ({ processId, body }) =>
-      apiPost<FlowStepAdminView>(
-        `/admin/processes/${processId}/steps`,
-        body,
-      ),
+      apiPost<FlowStepAdminView>(`/processes/${processId}/steps`, body),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
       // O editor mostra steps + resources via useProcessFlow, então
       // mutar qualquer step/resource também precisa revalidar o flow.
@@ -172,15 +180,13 @@ export function useUpdateStep(): UseMutationResult<
   return useMutation<FlowStepAdminView, ApiError, UpdateStepInput>({
     mutationFn: ({ processId, stepId, patch }) =>
       apiPatch<FlowStepAdminView>(
-        `/admin/processes/${processId}/steps/${stepId}`,
+        `/processes/${processId}/steps/${stepId}`,
         patch,
       ),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
-      // O editor mostra steps + resources via useProcessFlow, então
-      // mutar qualquer step/resource também precisa revalidar o flow.
       queryClient.invalidateQueries({
         queryKey: ["process-flow", variables.processId],
       });
@@ -201,13 +207,11 @@ export function useDeleteStep(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<void, ApiError, DeleteStepInput>({
     mutationFn: ({ processId, stepId }) =>
-      apiDelete<void>(`/admin/processes/${processId}/steps/${stepId}`),
+      apiDelete<void>(`/processes/${processId}/steps/${stepId}`),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
-      // O editor mostra steps + resources via useProcessFlow, então
-      // mutar qualquer step/resource também precisa revalidar o flow.
       queryClient.invalidateQueries({
         queryKey: ["process-flow", variables.processId],
       });
@@ -230,15 +234,13 @@ export function useCreateResource(): UseMutationResult<
   return useMutation<StepResourceAdminView, ApiError, CreateResourceInput>({
     mutationFn: ({ processId, stepId, body }) =>
       apiPost<StepResourceAdminView>(
-        `/admin/processes/${processId}/steps/${stepId}/resources`,
+        `/processes/${processId}/steps/${stepId}/resources`,
         body,
       ),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
-      // O editor mostra steps + resources via useProcessFlow, então
-      // mutar qualquer step/resource também precisa revalidar o flow.
       queryClient.invalidateQueries({
         queryKey: ["process-flow", variables.processId],
       });
@@ -261,14 +263,12 @@ export function useDeleteResource(): UseMutationResult<
   return useMutation<void, ApiError, DeleteResourceInput>({
     mutationFn: ({ processId, stepId, resourceId }) =>
       apiDelete<void>(
-        `/admin/processes/${processId}/steps/${stepId}/resources/${resourceId}`,
+        `/processes/${processId}/steps/${stepId}/resources/${resourceId}`,
       ),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
-        queryKey: adminProcessQueryKey(variables.processId),
+        queryKey: processManagementQueryKey(variables.processId),
       });
-      // O editor mostra steps + resources via useProcessFlow, então
-      // mutar qualquer step/resource também precisa revalidar o flow.
       queryClient.invalidateQueries({
         queryKey: ["process-flow", variables.processId],
       });
@@ -276,20 +276,21 @@ export function useDeleteResource(): UseMutationResult<
   });
 }
 
-// ---------- Transições de status (F-23) ----------
+// ---------- Transições de status ----------
 //
 // Helper compartilhado de invalidação. Toda transição altera o status
-// admin, e PUBLISHED/ARCHIVED também afetam o que aparece na listagem
-// pública e no detalhe público — invalidar tudo de uma vez é mais
-// simples (e barato) do que decidir caso a caso pelo status alvo.
+// do processo, e PUBLISHED/ARCHIVED também afetam o que aparece na
+// listagem pública e no detalhe público — invalidar tudo de uma vez é
+// mais simples (e barato) do que decidir caso a caso pelo status alvo.
 function invalidateProcessCaches(
   queryClient: ReturnType<typeof useQueryClient>,
   processId: string,
 ) {
   queryClient.invalidateQueries({
-    queryKey: adminProcessQueryKey(processId),
+    queryKey: processManagementQueryKey(processId),
   });
   queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+  queryClient.invalidateQueries({ queryKey: ["my-processes"] });
   queryClient.invalidateQueries({ queryKey: ["processes"] });
   queryClient.invalidateQueries({ queryKey: ["process", processId] });
 }
@@ -307,9 +308,28 @@ export function useSubmitProcessForReview(): UseMutationResult<
   return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
     mutationFn: ({ processId }) =>
       apiPost<ProcessAdminView>(
-        `/admin/processes/${processId}/submit-for-review`,
+        `/processes/${processId}/submit-for-review`,
         {},
       ),
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
+  });
+}
+
+/**
+ * Retira um processo IN_REVIEW de volta para DRAFT (autor desistiu da
+ * submissão para poder editar). Endpoint exclusivo do autor; admin que
+ * queira reverter usa o fluxo normal de approve/archive.
+ */
+export function useWithdrawProcess(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    mutationFn: ({ processId }) =>
+      apiPost<ProcessAdminView>(`/processes/${processId}/withdraw`, {}),
     onSettled: (_d, _e, variables) =>
       invalidateProcessCaches(queryClient, variables.processId),
   });
@@ -339,10 +359,12 @@ export function useArchiveProcess(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
-    // DELETE no admin é soft delete — backend devolve o ProcessAdminView
-    // já com status=ARCHIVED, então tratamos como mutation de retorno.
+    // DELETE no /processes/{id} é soft delete — backend devolve o
+    // ProcessAdminView já com status=ARCHIVED, então tratamos como
+    // mutation de retorno. Autor só consegue arquivar DRAFT/IN_REVIEW
+    // (PUBLISHED requer admin); o backend devolve 403 caso contrário.
     mutationFn: ({ processId }) =>
-      apiDelete<ProcessAdminView>(`/admin/processes/${processId}`),
+      apiDelete<ProcessAdminView>(`/processes/${processId}`),
     onSettled: (_d, _e, variables) =>
       invalidateProcessCaches(queryClient, variables.processId),
   });

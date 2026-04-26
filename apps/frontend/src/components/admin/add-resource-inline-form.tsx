@@ -9,7 +9,7 @@ import {
   stepResourceSchema,
   type StepResourceInput,
 } from "../../lib/validators/process";
-import { useCreateResource } from "../../hooks/use-admin-processes";
+import { useCreateResource } from "../../hooks/use-processes-management";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
