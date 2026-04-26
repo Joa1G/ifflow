@@ -685,7 +685,11 @@ def get_process_public_detail(
 
 
 def get_process_full_flow(
-    session: Session, process_id: UUID, require_published: bool = True
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> Process:
     """Retorna um Process com steps, sectors e resources carregados.
 
@@ -694,14 +698,15 @@ def get_process_full_flow(
     dos steps. Sem eager loading, iterar `process.steps[n].resources` no
     router dispararia 2*N queries adicionais.
 
-    Filtra por PUBLISHED por padrao pra dar o mesmo 404
-    uniforme que o detail publico. Se `require_published=False`, permite admins
-    verem fluxos de processos DRAFT/IN_REVIEW/ARCHIVED.
+    Regra de acesso:
+    - Processos PUBLISHED sao visiveis a qualquer usuario autenticado.
+    - Processos nao publicados (DRAFT/IN_REVIEW/ARCHIVED) so sao visiveis
+      ao autor ou a admins.
+
+    Para terceiros, o comportamento continua sendo 404 uniforme para nao
+    vazar existencia de fluxos ainda nao publicados.
     """
     statement = select(Process).where(Process.id == process_id)
-
-    if require_published:
-        statement = statement.where(Process.status == ProcessStatus.PUBLISHED)
 
     statement = statement.options(
         selectinload(Process.steps).selectinload(FlowStep.sector),  # type: ignore[attr-defined]
@@ -713,4 +718,14 @@ def get_process_full_flow(
             "Processo nao encontrado.",
             code="PROCESS_NOT_FOUND",
         )
-    return process
+
+    if process.status == ProcessStatus.PUBLISHED:
+        return process
+
+    if process.created_by == requester_id or _is_admin(requester_role):
+        return process
+
+    raise NotFoundError(
+        "Processo nao encontrado.",
+        code="PROCESS_NOT_FOUND",
+    )

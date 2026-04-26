@@ -3,7 +3,9 @@
 Tres camadas de visibilidade neste router:
 
 1. PUBLICOS (sem auth, so PUBLISHED): GET /, GET /{id}.
-2. AUTENTICADOS GENERICOS (USER+, ainda so PUBLISHED): GET /{id}/flow.
+2. FLUXO AUTENTICADO: GET /{id}/flow.
+   - PUBLISHED: qualquer autenticado pode ver.
+   - DRAFT/IN_REVIEW/ARCHIVED: apenas autor ou admin.
 3. AUTENTICADOS DE GESTAO (USER+, autor ou admin): POST /, GET /mine,
    GET /{id}/management, PATCH /{id}, DELETE /{id}, todo o CRUD de
    steps/resources, /submit-for-review, /withdraw.
@@ -23,7 +25,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 
 from app.core.dependencies import get_current_user_payload
-from app.core.enums import ProcessCategory, ProcessStatus, UserRole
+from app.core.enums import ProcessCategory, ProcessStatus
 from app.core.security import TokenPayload
 from app.database import get_session
 from app.schemas.process import (
@@ -132,11 +134,15 @@ def get_process_flow(
 
     Usa `get_current_user_payload` (decodifica o JWT) em vez de
     `get_current_user` (SELECT no banco) pra manter o endpoint barato — aqui
-    so importa que o token e valido, nao os dados do User.
+    so importa que o token e valido. A autorizacao detalhada (published para
+    qualquer autenticado; DRAFT/IN_REVIEW/ARCHIVED so para autor ou admin)
+    mora no service.
     """
-    is_admin = auth.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
     process = process_service.get_process_full_flow(
-        session, process_id, require_published=not is_admin
+        session,
+        process_id,
+        requester_id=auth.user_id,
+        requester_role=auth.role,
     )
 
     # Ordena por order_index em Python — a lista ja esta carregada (selectinload)
