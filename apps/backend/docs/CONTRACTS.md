@@ -34,8 +34,18 @@ O FastAPI gera o OpenAPI automaticamente em `/openapi.json` e uma UI em `/docs`.
 | `ACCOUNT_PENDING` | 403 | Cadastro ainda não aprovado pelo admin |
 | `ACCOUNT_REJECTED` | 403 | Cadastro rejeitado pelo admin |
 | `FORBIDDEN` | 403 | Usuário autenticado mas sem permissão |
+| `PROCESS_NOT_OWNED` | 403 | USER tentando alterar processo de outro autor |
+| `PROCESS_ARCHIVE_REQUIRES_ADMIN` | 403 | USER tentando arquivar processo PUBLISHED (precisa admin) |
 | `NOT_FOUND` | 404 | Recurso inexistente |
+| `PROCESS_NOT_FOUND` | 404 | Processo inexistente |
+| `STEP_NOT_FOUND` | 404 | Etapa inexistente ou fora do processo do path |
+| `RESOURCE_NOT_FOUND` | 404 | Recurso inexistente ou fora do step do path |
+| `SECTOR_NOT_FOUND` | 404 | Setor referenciado não existe |
 | `EMAIL_ALREADY_EXISTS` | 409 | Email já cadastrado |
+| `PROCESS_NOT_EDITABLE` | 409 | Processo está ARCHIVED — não aceita mais mutação |
+| `PROCESS_LOCKED_IN_REVIEW` | 409 | Processo em IN_REVIEW — autor precisa fazer `withdraw` antes de editar |
+| `PROCESS_ALREADY_ARCHIVED` | 409 | Tentativa de arquivar processo já ARCHIVED |
+| `INVALID_STATE_TRANSITION` | 409 | Transição de status inválida (ex: aprovar DRAFT direto) |
 | `INVALID_EMAIL_DOMAIN` | 400 | Email não é @ifam.edu.br |
 | `WEAK_PASSWORD` | 400 | Senha não atende requisitos |
 | `RATE_LIMITED` | 429 | Muitas tentativas |
@@ -418,27 +428,54 @@ Retorna o progresso do usuário autenticado naquele processo. Se não existir, c
 
 **Response 200:** retorna o UserProgress completo atualizado.
 
-## Endpoints — Administração de Processos
+## Endpoints — Gestão de Processos (autor + admin)
 
-Todos exigem role `ADMIN` ou `SUPER_ADMIN`.
+Refatoração `feat/user-can-create-processes`: qualquer USER autenticado cria/edita seus próprios processos. Admin tem override (edita/arquiva qualquer processo) e é o único que aprova (`POST /admin/processes/{id}/approve`).
 
-### POST /admin/processes
-### PATCH /admin/processes/{process_id}
-### DELETE /admin/processes/{process_id} (soft delete → status ARCHIVED)
-### POST /admin/processes/{process_id}/submit-for-review (DRAFT → IN_REVIEW)
+A regra geral é "**autor ou admin**": o `created_by` (gravado a partir do JWT na criação) determina ownership. Service eleva `PROCESS_NOT_OWNED` (403) quando um USER tenta tocar processo alheio.
+
+### POST /processes
+Cria um processo em `DRAFT`. `created_by` vem do JWT (campo no body é ignorado por mass assignment). Permissão: USER+.
+
+### GET /processes/mine
+Lista processos cujo `created_by` é o usuário autenticado. Aceita query params `status_filter` e `category`. Permissão: USER+.
+
+### GET /processes/{process_id}/management
+Visão completa (`ProcessAdminView`) para o autor ou admin gerenciar o processo. Diferente de `GET /processes/{id}` (público, só PUBLISHED), retorna qualquer status. Permissão: autor ou admin.
+
+### PATCH /processes/{process_id}
+Edita campos do processo. Bloqueia se status=`ARCHIVED` (409 `PROCESS_NOT_EDITABLE`) ou `IN_REVIEW` (409 `PROCESS_LOCKED_IN_REVIEW` — autor precisa chamar `/withdraw` antes). Permissão: autor ou admin.
+
+### DELETE /processes/{process_id}
+Soft delete → status `ARCHIVED`. Autor pode em DRAFT/IN_REVIEW; admin pode em qualquer status. Autor tentando PUBLISHED recebe 403 `PROCESS_ARCHIVE_REQUIRES_ADMIN`. Já arquivado é 409 `PROCESS_ALREADY_ARCHIVED`.
+
+### POST /processes/{process_id}/submit-for-review (DRAFT → IN_REVIEW)
+Permissão: autor ou admin. Outro estado é 409 `INVALID_STATE_TRANSITION`.
+
+### POST /processes/{process_id}/withdraw (IN_REVIEW → DRAFT)
+Volta o processo para rascunho para o autor (ou admin) editar. Outro estado é 409. Permissão: autor ou admin.
+
+### POST /processes/{process_id}/steps
+### PATCH /processes/{process_id}/steps/{step_id}
+### DELETE /processes/{process_id}/steps/{step_id}
+### POST /processes/{process_id}/steps/{step_id}/resources
+### DELETE /processes/{process_id}/steps/{step_id}/resources/{resource_id}
+Mutações no fluxo seguem ownership do processo pai e exigem que o processo esteja editável (não ARCHIVED, não IN_REVIEW). IDOR é barrado (step_id precisa pertencer ao process_id, resource_id ao step_id; mismatch → 404). Permissão: autor ou admin.
+
+## Endpoints — Moderação (admin)
+
+Restritos a `ADMIN` ou `SUPER_ADMIN`.
+
+### GET /admin/processes
+Lista TODOS os processos (qualquer autor, qualquer status). Aceita filtros `status` e `category`. Único lugar onde admin vê DRAFT/IN_REVIEW de outros autores.
+
 ### POST /admin/processes/{process_id}/approve (IN_REVIEW → PUBLISHED)
-### POST /admin/processes/{process_id}/steps
-### PATCH /admin/processes/{process_id}/steps/{step_id}
-### DELETE /admin/processes/{process_id}/steps/{step_id}
-### POST /admin/processes/{process_id}/steps/{step_id}/resources
-### DELETE /admin/processes/{process_id}/steps/{step_id}/resources/{resource_id}
-
-**Detalhes de cada um** serão especificados em suas respectivas tasks. Os formatos seguem o mesmo padrão dos endpoints públicos — entrada espelha os campos do modelo (menos timestamps, IDs gerados, `access_count`).
+Marca como aprovado e seta `approved_by` a partir do JWT. Outro estado é 409. Auto-aprovação (autor == aprovador) é permitida no MVP mas registra `WARNING` no log para auditoria.
 
 ## Notas sobre o fluxo de aprovação de processos
 
-- Processos começam em `DRAFT` (admin pode editar livremente).
-- Admin move para `IN_REVIEW` quando terminou.
-- Outro admin (ou super_admin) aprova → `PUBLISHED`.
-- **No MVP**, como pode haver poucos admins, um admin pode aprovar seu próprio processo — mas gera log de auditoria. Discutir na equipe se queremos bloquear isso.
-- Arquivamento (`ARCHIVED`) esconde o processo da listagem pública mas preserva o progresso dos usuários.
+- Processos começam em `DRAFT`. Autor (USER ou admin) edita livremente.
+- Autor (ou admin) move para `IN_REVIEW` (`POST /processes/{id}/submit-for-review`).
+- Em `IN_REVIEW`, edição direta é bloqueada — autor (ou admin) chama `POST /processes/{id}/withdraw` para voltar a `DRAFT`, edita, e re-submete.
+- Admin aprova → `PUBLISHED` (`POST /admin/processes/{id}/approve`). Auto-aprovação permitida no MVP, mas com log de auditoria.
+- Arquivamento (`ARCHIVED`) é terminal e esconde o processo da listagem pública (mas preserva o progresso dos usuários). Autor pode arquivar próprio DRAFT/IN_REVIEW; só admin arquiva PUBLISHED.

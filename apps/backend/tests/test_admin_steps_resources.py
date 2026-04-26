@@ -1,10 +1,17 @@
-"""Testes de integracao dos endpoints admin de FlowStep e StepResource (B-17).
+"""Testes de integracao dos endpoints de FlowStep e StepResource.
+
+URLs movidas de /admin/processes/* para /processes/* na refatoracao
+`feat/user-can-create-processes` — qualquer USER autenticado mexe nos steps
+do proprio processo, admin mexe em qualquer.
 
 Foco em:
-- Autorizacao: 401 sem token, 403 para USER comum (admin/super_admin passa).
+- Autorizacao: 401 sem token, 403 USER em processo alheio (PROCESS_NOT_OWNED),
+  admin/super_admin passa em qualquer.
 - IDOR: step_id pertence a process_id, resource_id pertence a step_id. Mismatch
   retorna 404 (nao 403 — nao confirmar existencia do id em outro contexto).
 - Processo ARCHIVED bloqueia TODAS as mutacoes de fluxo (PROCESS_NOT_EDITABLE).
+- Processo IN_REVIEW bloqueia mutacoes (PROCESS_LOCKED_IN_REVIEW) — autor faz
+  withdraw antes de editar.
 - Reordenacao de steps via campo `order` no PATCH.
 - Cascade: deletar step apaga resources associados.
 - Validacao de sector inexistente (SECTOR_NOT_FOUND).
@@ -65,7 +72,7 @@ def _create_process(client: TestClient, headers: dict, **overrides) -> dict:
         "requirements": [],
     }
     payload.update(overrides)
-    response = client.post("/admin/processes", json=payload, headers=headers)
+    response = client.post("/processes", json=payload, headers=headers)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -83,7 +90,7 @@ def _step_payload(sector_id, **overrides) -> dict:
     return base
 
 
-# ---------- POST /admin/processes/{id}/steps ----------
+# ---------- POST /processes/{id}/steps ----------
 
 
 def test_criar_step_como_admin_201(client: TestClient, session: Session):
@@ -92,7 +99,7 @@ def test_criar_step_como_admin_201(client: TestClient, session: Session):
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     )
@@ -111,7 +118,7 @@ def test_criar_step_sem_auth_retorna_401(client: TestClient, session: Session):
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
     )
 
@@ -125,7 +132,7 @@ def test_criar_step_como_user_comum_retorna_403(client: TestClient, session: Ses
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(user),
     )
@@ -139,10 +146,10 @@ def test_criar_step_em_processo_archived_retorna_409(
     admin = _create_user(session, email="admin.sar@ifam.edu.br")
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
-    client.delete(f"/admin/processes/{process['id']}", headers=_auth_headers(admin))
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     )
@@ -158,7 +165,7 @@ def test_criar_step_em_processo_inexistente_retorna_404(
     sector = _create_sector(session)
 
     response = client.post(
-        f"/admin/processes/{uuid4()}/steps",
+        f"/processes/{uuid4()}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     )
@@ -174,7 +181,7 @@ def test_criar_step_com_sector_inexistente_retorna_404(
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(uuid4()),
         headers=_auth_headers(admin),
     )
@@ -183,7 +190,7 @@ def test_criar_step_com_sector_inexistente_retorna_404(
     assert response.json()["error"]["code"] == "SECTOR_NOT_FOUND"
 
 
-# ---------- PATCH /admin/processes/{id}/steps/{step_id} ----------
+# ---------- PATCH /processes/{id}/steps/{step_id} ----------
 
 
 def test_editar_step_atualiza_campos(client: TestClient, session: Session):
@@ -191,13 +198,13 @@ def test_editar_step_atualiza_campos(client: TestClient, session: Session):
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.patch(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         json={"title": "Novo titulo", "order": 5},
         headers=_auth_headers(admin),
     )
@@ -216,13 +223,13 @@ def test_editar_step_reordena_via_campo_order(client: TestClient, session: Sessi
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id, order=1),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.patch(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         json={"order": 99},
         headers=_auth_headers(admin),
     )
@@ -241,14 +248,14 @@ def test_editar_step_nao_pertencente_ao_processo_retorna_404_idor(
     process_a = _create_process(client, _auth_headers(admin), title="A")
     process_b = _create_process(client, _auth_headers(admin), title="B")
     step_in_b = client.post(
-        f"/admin/processes/{process_b['id']}/steps",
+        f"/processes/{process_b['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     # Tenta editar via process_a (IDOR).
     response = client.patch(
-        f"/admin/processes/{process_a['id']}/steps/{step_in_b['id']}",
+        f"/processes/{process_a['id']}/steps/{step_in_b['id']}",
         json={"title": "hacked"},
         headers=_auth_headers(admin),
     )
@@ -264,14 +271,14 @@ def test_editar_step_em_processo_archived_retorna_409(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
-    client.delete(f"/admin/processes/{process['id']}", headers=_auth_headers(admin))
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
 
     response = client.patch(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         json={"title": "late"},
         headers=_auth_headers(admin),
     )
@@ -287,13 +294,13 @@ def test_editar_step_com_sector_inexistente_retorna_404(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.patch(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         json={"sector_id": str(uuid4())},
         headers=_auth_headers(admin),
     )
@@ -302,7 +309,7 @@ def test_editar_step_com_sector_inexistente_retorna_404(
     assert response.json()["error"]["code"] == "SECTOR_NOT_FOUND"
 
 
-# ---------- DELETE /admin/processes/{id}/steps/{step_id} ----------
+# ---------- DELETE /processes/{id}/steps/{step_id} ----------
 
 
 def test_deletar_step_204(client: TestClient, session: Session):
@@ -310,13 +317,13 @@ def test_deletar_step_204(client: TestClient, session: Session):
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         headers=_auth_headers(admin),
     )
 
@@ -328,7 +335,7 @@ def test_deletar_step_inexistente_retorna_404(client: TestClient, session: Sessi
     process = _create_process(client, _auth_headers(admin))
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{uuid4()}",
+        f"/processes/{process['id']}/steps/{uuid4()}",
         headers=_auth_headers(admin),
     )
 
@@ -345,12 +352,12 @@ def test_deletar_step_cascata_remove_resources(client: TestClient, session: Sess
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
     resource = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={
             "type": "LINK",
             "title": "Link",
@@ -360,7 +367,7 @@ def test_deletar_step_cascata_remove_resources(client: TestClient, session: Sess
     ).json()
 
     client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}",
         headers=_auth_headers(admin),
     )
 
@@ -368,14 +375,14 @@ def test_deletar_step_cascata_remove_resources(client: TestClient, session: Sess
     # o primeiro 404 e STEP_NOT_FOUND (a validacao de IDOR checa step antes
     # do resource).
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
         headers=_auth_headers(admin),
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "STEP_NOT_FOUND"
 
 
-# ---------- POST /admin/processes/{id}/steps/{step_id}/resources ----------
+# ---------- POST /processes/{id}/steps/{step_id}/resources ----------
 
 
 def test_criar_resource_document_so_url(client: TestClient, session: Session):
@@ -383,13 +390,13 @@ def test_criar_resource_document_so_url(client: TestClient, session: Session):
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={
             "type": "DOCUMENT",
             "title": "Formulario",
@@ -411,13 +418,13 @@ def test_criar_resource_legal_basis_so_content(client: TestClient, session: Sess
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={
             "type": "LEGAL_BASIS",
             "title": "Lei 8.112/1990",
@@ -440,13 +447,13 @@ def test_criar_resource_step_em_outro_processo_retorna_404_idor(
     process_a = _create_process(client, _auth_headers(admin), title="A")
     process_b = _create_process(client, _auth_headers(admin), title="B")
     step_b = client.post(
-        f"/admin/processes/{process_b['id']}/steps",
+        f"/processes/{process_b['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.post(
-        f"/admin/processes/{process_a['id']}/steps/{step_b['id']}/resources",
+        f"/processes/{process_a['id']}/steps/{step_b['id']}/resources",
         json={
             "type": "LINK",
             "title": "Link",
@@ -466,14 +473,14 @@ def test_criar_resource_em_processo_archived_retorna_409(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
-    client.delete(f"/admin/processes/{process['id']}", headers=_auth_headers(admin))
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={"type": "LINK", "title": "x", "url": "https://x"},
         headers=_auth_headers(admin),
     )
@@ -490,13 +497,13 @@ def test_criar_resource_como_user_comum_retorna_403(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={"type": "LINK", "title": "x", "url": "https://x"},
         headers=_auth_headers(user),
     )
@@ -512,12 +519,12 @@ def test_deletar_resource_204(client: TestClient, session: Session):
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
     resource = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={
             "type": "LINK",
             "title": "Link",
@@ -527,7 +534,7 @@ def test_deletar_resource_204(client: TestClient, session: Session):
     ).json()
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
         headers=_auth_headers(admin),
     )
 
@@ -543,23 +550,23 @@ def test_deletar_resource_em_step_errado_retorna_404_idor(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step_a = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id, order=1),
         headers=_auth_headers(admin),
     ).json()
     step_b = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id, order=2),
         headers=_auth_headers(admin),
     ).json()
     resource_b = client.post(
-        f"/admin/processes/{process['id']}/steps/{step_b['id']}/resources",
+        f"/processes/{process['id']}/steps/{step_b['id']}/resources",
         json={"type": "LINK", "title": "B", "url": "https://b"},
         headers=_auth_headers(admin),
     ).json()
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step_a['id']}/resources/{resource_b['id']}",
+        f"/processes/{process['id']}/steps/{step_a['id']}/resources/{resource_b['id']}",
         headers=_auth_headers(admin),
     )
 
@@ -572,13 +579,13 @@ def test_deletar_resource_inexistente_retorna_404(client: TestClient, session: S
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources/{uuid4()}",
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{uuid4()}",
         headers=_auth_headers(admin),
     )
 
@@ -594,19 +601,75 @@ def test_deletar_resource_como_user_comum_retorna_403(
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
     step = client.post(
-        f"/admin/processes/{process['id']}/steps",
+        f"/processes/{process['id']}/steps",
         json=_step_payload(sector.id),
         headers=_auth_headers(admin),
     ).json()
     resource = client.post(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources",
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
         json={"type": "LINK", "title": "x", "url": "https://x"},
         headers=_auth_headers(admin),
     ).json()
 
     response = client.delete(
-        f"/admin/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
         headers=_auth_headers(user),
     )
 
     assert response.status_code == 403
+
+
+# ---------- Casos de ownership (USER autor cria fluxo proprio) ----------
+
+
+def test_user_dono_cria_step_no_proprio_processo(client: TestClient, session: Session):
+    """USER autor consegue adicionar etapas no proprio DRAFT."""
+    owner = _create_user(session, email="owner.steps@ifam.edu.br", role=UserRole.USER)
+    sector = _create_sector(session, acronym="OWN")
+    process = _create_process(client, _auth_headers(owner))
+
+    response = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(owner),
+    )
+
+    assert response.status_code == 201
+
+
+def test_user_nao_dono_cria_step_recebe_403_process_not_owned(
+    client: TestClient, session: Session
+):
+    owner = _create_user(session, email="owner.stepsx@ifam.edu.br", role=UserRole.USER)
+    other = _create_user(session, email="other.stepsx@ifam.edu.br", role=UserRole.USER)
+    sector = _create_sector(session, acronym="OTH")
+    process = _create_process(client, _auth_headers(owner))
+
+    response = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(other),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "PROCESS_NOT_OWNED"
+
+
+def test_step_em_processo_in_review_retorna_409(client: TestClient, session: Session):
+    """IN_REVIEW e locked — autor tem que withdraw antes de mexer no fluxo."""
+    owner = _create_user(session, email="owner.stepsir@ifam.edu.br", role=UserRole.USER)
+    sector = _create_sector(session, acronym="IRV")
+    process = _create_process(client, _auth_headers(owner))
+    client.post(
+        f"/processes/{process['id']}/submit-for-review",
+        headers=_auth_headers(owner),
+    )
+
+    response = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(owner),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PROCESS_LOCKED_IN_REVIEW"

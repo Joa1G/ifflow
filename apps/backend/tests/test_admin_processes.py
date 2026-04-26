@@ -1,16 +1,16 @@
-"""Testes de integracao dos endpoints /admin/processes/* (B-16).
+"""Testes do router /admin/processes/* (moderacao).
 
-Cobrem:
-- Autorizacao: 401 sem token, 403 para USER comum, 200/201 para ADMIN/SUPER_ADMIN.
-- CRUD: criar (201, nasce DRAFT), listar (inclui DRAFT/ARCHIVED), detalhar,
-  editar (200), arquivar (200 com status=ARCHIVED).
-- Erros de dominio propagados do service: 404 PROCESS_NOT_FOUND,
-  409 PROCESS_NOT_EDITABLE (editar arquivado), 409 PROCESS_ALREADY_ARCHIVED.
-- Mass assignment: mandar created_by/status/access_count no body nao afeta
-  o recurso (schema filtra).
+Apos a refatoracao `feat/user-can-create-processes`, este router so cuida
+de moderacao — listagem global (admin ve tudo, qualquer autor) e aprovacao
+final. CRUD vive em /processes/* (cobertura em test_processes_management.py)
+e fluxo de aprovacao continua dividido com test_process_approval.py.
+
+Foco aqui:
+- Autorizacao da listagem: 401 sem token, 403 USER, 200 admin/super_admin.
+- Filtros (status, category) e ordenacao por created_at desc.
+- Listagem cobre processos de qualquer autor (nao so do admin que esta
+  consultando).
 """
-
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session
@@ -60,108 +60,53 @@ def _valid_payload(**overrides) -> dict:
     return base
 
 
-# ---------- POST /admin/processes ----------
-
-
-def test_criar_processo_sem_auth_retorna_401(client: TestClient):
-    response = client.post("/admin/processes", json=_valid_payload())
-
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "UNAUTHENTICATED"
-
-
-def test_criar_processo_como_user_comum_retorna_403(
-    client: TestClient, session: Session
-):
-    user = _create_user(session, email="user@ifam.edu.br", role=UserRole.USER)
-
+def _create_process_via_api(client: TestClient, headers: dict, **overrides) -> dict:
     response = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(user)
+        "/processes", json=_valid_payload(**overrides), headers=headers
     )
-
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "FORBIDDEN"
-
-
-def test_criar_processo_como_admin_nasce_draft_com_created_by_do_jwt(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin@ifam.edu.br")
-
-    response = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 201
-    body = response.json()
-    assert body["status"] == "DRAFT"
-    assert body["access_count"] == 0
-    assert body["created_by"] == str(admin.id)
-    assert body["approved_by"] is None
-
-
-def test_criar_processo_ignora_campos_smuggled_no_body(
-    client: TestClient, session: Session
-):
-    """Defesa contra mass assignment: status/created_by/access_count no body
-    sao ignorados pelo schema e nao afetam o recurso criado."""
-    admin = _create_user(session, email="admin.smuggle@ifam.edu.br")
-    outro_user_id = str(uuid4())
-
-    payload = _valid_payload()
-    payload["status"] = "PUBLISHED"
-    payload["access_count"] = 999
-    payload["created_by"] = outro_user_id
-    payload["approved_by"] = outro_user_id
-
-    response = client.post(
-        "/admin/processes", json=payload, headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 201
-    body = response.json()
-    assert body["status"] == "DRAFT"
-    assert body["access_count"] == 0
-    assert body["created_by"] == str(admin.id)
-    assert body["approved_by"] is None
-
-
-def test_criar_processo_com_payload_invalido_retorna_422(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.v@ifam.edu.br")
-
-    response = client.post(
-        "/admin/processes",
-        json={"title": "", "short_description": "x"},
-        headers=_auth_headers(admin),
-    )
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
 # ---------- GET /admin/processes ----------
 
 
-def test_listar_processos_inclui_todos_os_status(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.l@ifam.edu.br")
+def test_listar_admin_sem_auth_retorna_401(client: TestClient):
+    response = client.get("/admin/processes")
 
-    # Cria um DRAFT + um ARCHIVED via endpoints.
-    draft_resp = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Draft"),
-        headers=_auth_headers(admin),
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+def test_listar_admin_como_user_comum_retorna_403(client: TestClient, session: Session):
+    user = _create_user(session, email="u.adm@ifam.edu.br", role=UserRole.USER)
+
+    response = client.get("/admin/processes", headers=_auth_headers(user))
+
+    assert response.status_code == 403
+
+
+def test_listar_admin_vazio(client: TestClient, session: Session):
+    admin = _create_user(session, email="admin.empty@ifam.edu.br")
+
+    response = client.get("/admin/processes", headers=_auth_headers(admin))
+
+    assert response.status_code == 200
+    assert response.json() == {"processes": [], "total": 0}
+
+
+def test_listar_admin_inclui_todos_os_status(client: TestClient, session: Session):
+    """Mostra DRAFT + ARCHIVED de QUALQUER autor — chave da moderacao."""
+    admin = _create_user(session, email="admin.all@ifam.edu.br")
+    user = _create_user(session, email="u.all@ifam.edu.br", role=UserRole.USER)
+
+    user_draft = _create_process_via_api(
+        client, _auth_headers(user), title="Draft do user"
     )
-    archive_src_resp = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Arc"),
-        headers=_auth_headers(admin),
+    admin_draft = _create_process_via_api(
+        client, _auth_headers(admin), title="Draft do admin"
     )
-    client.delete(
-        f"/admin/processes/{archive_src_resp.json()['id']}",
-        headers=_auth_headers(admin),
-    )
+    client.delete(f"/processes/{admin_draft['id']}", headers=_auth_headers(admin))
 
     response = client.get("/admin/processes", headers=_auth_headers(admin))
 
@@ -170,27 +115,16 @@ def test_listar_processos_inclui_todos_os_status(client: TestClient, session: Se
     assert body["total"] == 2
     statuses = {p["status"] for p in body["processes"]}
     assert statuses == {"DRAFT", "ARCHIVED"}
-    assert draft_resp.json()["id"] in {p["id"] for p in body["processes"]}
+    ids = {p["id"] for p in body["processes"]}
+    assert user_draft["id"] in ids
+    assert admin_draft["id"] in ids
 
 
-def test_listar_processos_filtra_por_status_via_query(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.f@ifam.edu.br")
-    client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Draft1"),
-        headers=_auth_headers(admin),
-    )
-    draft2 = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Draft2"),
-        headers=_auth_headers(admin),
-    )
-    client.delete(
-        f"/admin/processes/{draft2.json()['id']}",
-        headers=_auth_headers(admin),
-    )
+def test_listar_admin_filtra_por_status(client: TestClient, session: Session):
+    admin = _create_user(session, email="admin.fst@ifam.edu.br")
+    _create_process_via_api(client, _auth_headers(admin), title="D1")
+    target = _create_process_via_api(client, _auth_headers(admin), title="D2")
+    client.delete(f"/processes/{target['id']}", headers=_auth_headers(admin))
 
     response = client.get(
         "/admin/processes?status=ARCHIVED", headers=_auth_headers(admin)
@@ -202,270 +136,13 @@ def test_listar_processos_filtra_por_status_via_query(
     assert body["processes"][0]["status"] == "ARCHIVED"
 
 
-def test_listar_processos_como_user_comum_retorna_403(
+def test_listar_admin_filtra_draft_exclui_archived(
     client: TestClient, session: Session
 ):
-    user = _create_user(session, email="u@ifam.edu.br", role=UserRole.USER)
-
-    response = client.get("/admin/processes", headers=_auth_headers(user))
-
-    assert response.status_code == 403
-
-
-# ---------- GET /admin/processes/{id} ----------
-
-
-def test_detalhar_processo_existente(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.d@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-
-    response = client.get(
-        f"/admin/processes/{created['id']}", headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 200
-    assert response.json()["id"] == created["id"]
-
-
-def test_detalhar_processo_inexistente_retorna_404(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.404@ifam.edu.br")
-
-    response = client.get(f"/admin/processes/{uuid4()}", headers=_auth_headers(admin))
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "PROCESS_NOT_FOUND"
-
-
-# ---------- PATCH /admin/processes/{id} ----------
-
-
-def test_editar_processo_atualiza_campos(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.p@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-
-    response = client.patch(
-        f"/admin/processes/{created['id']}",
-        json={"title": "Novo titulo"},
-        headers=_auth_headers(admin),
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["title"] == "Novo titulo"
-    assert body["short_description"] == created["short_description"]
-
-
-def test_editar_processo_inexistente_retorna_404(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.p404@ifam.edu.br")
-
-    response = client.patch(
-        f"/admin/processes/{uuid4()}",
-        json={"title": "x"},
-        headers=_auth_headers(admin),
-    )
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "PROCESS_NOT_FOUND"
-
-
-def test_editar_processo_archived_retorna_409(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.pa@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-    client.delete(f"/admin/processes/{created['id']}", headers=_auth_headers(admin))
-
-    response = client.patch(
-        f"/admin/processes/{created['id']}",
-        json={"title": "tarde"},
-        headers=_auth_headers(admin),
-    )
-
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "PROCESS_NOT_EDITABLE"
-
-
-def test_editar_processo_como_user_comum_retorna_403(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.pu@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-    user = _create_user(session, email="u.pu@ifam.edu.br", role=UserRole.USER)
-
-    response = client.patch(
-        f"/admin/processes/{created['id']}",
-        json={"title": "nao"},
-        headers=_auth_headers(user),
-    )
-
-    assert response.status_code == 403
-
-
-# ---------- DELETE /admin/processes/{id} (soft delete) ----------
-
-
-def test_arquivar_processo_muda_status_e_mantem_registro(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.a@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-
-    response = client.delete(
-        f"/admin/processes/{created['id']}", headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "ARCHIVED"
-    # Continua retornavel via GET — e soft delete, nao hard delete.
-    get_response = client.get(
-        f"/admin/processes/{created['id']}", headers=_auth_headers(admin)
-    )
-    assert get_response.status_code == 200
-    assert get_response.json()["status"] == "ARCHIVED"
-
-
-def test_arquivar_processo_ja_arquivado_retorna_409(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.aa@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-    client.delete(f"/admin/processes/{created['id']}", headers=_auth_headers(admin))
-
-    response = client.delete(
-        f"/admin/processes/{created['id']}", headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "PROCESS_ALREADY_ARCHIVED"
-
-
-def test_arquivar_processo_como_user_comum_retorna_403(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.au@ifam.edu.br")
-    created = client.post(
-        "/admin/processes", json=_valid_payload(), headers=_auth_headers(admin)
-    ).json()
-    user = _create_user(session, email="u.au@ifam.edu.br", role=UserRole.USER)
-
-    response = client.delete(
-        f"/admin/processes/{created['id']}", headers=_auth_headers(user)
-    )
-
-    assert response.status_code == 403
-
-
-def test_super_admin_tambem_pode_gerenciar_processos(
-    client: TestClient, session: Session
-):
-    super_admin = _create_user(
-        session, email="sa@ifam.edu.br", role=UserRole.SUPER_ADMIN
-    )
-
-    response = client.post(
-        "/admin/processes",
-        json=_valid_payload(),
-        headers=_auth_headers(super_admin),
-    )
-
-    assert response.status_code == 201
-    assert response.json()["created_by"] == str(super_admin.id)
-
-
-def test_pending_user_nao_consegue_criar_processo(client: TestClient, session: Session):
-    """Regressao: status PENDING nao deveria conceder acesso admin mesmo que
-    role seja ADMIN por algum motivo. A dependency require_role ja checa o
-    status no JWT? Nao — o JWT so carrega role. O status e verificado no
-    login e so usuarios APPROVED recebem token, entao este teste documenta
-    a propriedade atual (pendente com token admin conseguiria passar, mas
-    pending nao recebe token no fluxo normal).
-    """
-    admin_pending = _create_user(
-        session,
-        email="admin.pend@ifam.edu.br",
-        role=UserRole.ADMIN,
-        status=UserStatus.PENDING,
-    )
-
-    # Fabricamos o token direto — nao passa pelo fluxo de login real.
-    response = client.post(
-        "/admin/processes",
-        json=_valid_payload(),
-        headers=_auth_headers(admin_pending),
-    )
-
-    # A role e que autoriza — e isso e intencional. PENDING x APPROVED e
-    # barreira do login, nao da autorizacao por token.
-    assert response.status_code == 201
-
-
-def test_listar_processos_retorna_vazio_se_nao_ha_processos(
-    client: TestClient, session: Session
-):
-    admin = _create_user(session, email="admin.e@ifam.edu.br")
-
-    response = client.get("/admin/processes", headers=_auth_headers(admin))
-
-    assert response.status_code == 200
-    assert response.json() == {"processes": [], "total": 0}
-
-
-def test_status_query_invalido_retorna_422(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.q@ifam.edu.br")
-
-    response = client.get(
-        "/admin/processes?status=NAO_EXISTE", headers=_auth_headers(admin)
-    )
-
-    assert response.status_code == 422
-
-
-def test_listagem_ordenada_por_created_at_desc(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.o@ifam.edu.br")
-    first = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Primeiro"),
-        headers=_auth_headers(admin),
-    ).json()
-    second = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="Segundo"),
-        headers=_auth_headers(admin),
-    ).json()
-
-    response = client.get("/admin/processes", headers=_auth_headers(admin))
-
-    ids = [p["id"] for p in response.json()["processes"]]
-    # Criado por ultimo aparece primeiro.
-    assert ids[0] == second["id"]
-    assert ids[1] == first["id"]
-
-
-def test_status_filter_draft_exclui_archived(client: TestClient, session: Session):
-    admin = _create_user(session, email="admin.fd@ifam.edu.br")
-    draft = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="D"),
-        headers=_auth_headers(admin),
-    ).json()
-    arc = client.post(
-        "/admin/processes",
-        json=_valid_payload(title="A"),
-        headers=_auth_headers(admin),
-    ).json()
-    client.delete(f"/admin/processes/{arc['id']}", headers=_auth_headers(admin))
+    admin = _create_user(session, email="admin.draft@ifam.edu.br")
+    draft = _create_process_via_api(client, _auth_headers(admin), title="D")
+    arc = _create_process_via_api(client, _auth_headers(admin), title="A")
+    client.delete(f"/processes/{arc['id']}", headers=_auth_headers(admin))
 
     response = client.get(
         f"/admin/processes?status={ProcessStatus.DRAFT.value}",
@@ -475,3 +152,39 @@ def test_status_filter_draft_exclui_archived(client: TestClient, session: Sessio
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["processes"][0]["id"] == draft["id"]
+
+
+def test_listar_admin_status_query_invalido_retorna_422(
+    client: TestClient, session: Session
+):
+    admin = _create_user(session, email="admin.422@ifam.edu.br")
+
+    response = client.get(
+        "/admin/processes?status=NAO_EXISTE", headers=_auth_headers(admin)
+    )
+
+    assert response.status_code == 422
+
+
+def test_listar_admin_ordenado_por_created_at_desc(
+    client: TestClient, session: Session
+):
+    admin = _create_user(session, email="admin.ord@ifam.edu.br")
+    first = _create_process_via_api(client, _auth_headers(admin), title="Primeiro")
+    second = _create_process_via_api(client, _auth_headers(admin), title="Segundo")
+
+    response = client.get("/admin/processes", headers=_auth_headers(admin))
+
+    ids = [p["id"] for p in response.json()["processes"]]
+    assert ids[0] == second["id"]
+    assert ids[1] == first["id"]
+
+
+def test_listar_admin_como_super_admin_funciona(client: TestClient, session: Session):
+    super_admin = _create_user(
+        session, email="sa.adm@ifam.edu.br", role=UserRole.SUPER_ADMIN
+    )
+
+    response = client.get("/admin/processes", headers=_auth_headers(super_admin))
+
+    assert response.status_code == 200

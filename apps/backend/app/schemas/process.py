@@ -59,7 +59,14 @@ class ProcessUpdate(BaseModel):
 
 
 class ProcessAdminView(BaseModel):
-    """Visao admin — usada nos endpoints /admin/processes e derivados."""
+    """Visao "gestao" — usada por endpoints onde autor e admin precisam ver
+    metadados completos (status, audit, qualquer status de processo).
+
+    Mantem o nome historico "Admin" porque vai gerado no OpenAPI e o frontend
+    ja referencia esse type. Hoje tambem e usado pelo dono nao-admin em
+    /processes/mine e /processes/{id}/management — a "visao admin" virou "visao
+    de quem tem permissao para gerenciar o processo".
+    """
 
     id: UUID
     title: str
@@ -74,6 +81,14 @@ class ProcessAdminView(BaseModel):
     approved_by: UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class ProcessesManagementListResponse(BaseModel):
+    """Envelope compartilhado entre GET /admin/processes (admin ve tudo) e
+    GET /processes/mine (autor ve so os proprios)."""
+
+    processes: list[ProcessAdminView]
+    total: int
 
 
 class ProcessPublicList(BaseModel):
