@@ -282,9 +282,8 @@ def test_token_invalido_retorna_401(client: TestClient, session: Session):
 
 # ---------- acesso por status / ownership ----------
 
-def test_autor_consegue_ver_flow_do_proprio_draft(
-    client: TestClient, session: Session
-):
+
+def test_autor_consegue_ver_flow_do_proprio_draft(client: TestClient, session: Session):
     admin = _create_user(session, email="a8@ifam.edu.br", role=UserRole.ADMIN)
     process = _create_process(session, created_by=admin.id, status=ProcessStatus.DRAFT)
 
@@ -319,9 +318,7 @@ def test_autor_consegue_ver_flow_do_proprio_in_review(
     assert response.json()["process"]["id"] == str(process.id)
 
 
-def test_terceiro_recebe_404_no_flow_de_in_review(
-    client: TestClient, session: Session
-):
+def test_terceiro_recebe_404_no_flow_de_in_review(client: TestClient, session: Session):
     admin = _create_user(session, email="a9@ifam.edu.br", role=UserRole.ADMIN)
     user = _create_user(session, email="u9b@ifam.edu.br")
     process = _create_process(
