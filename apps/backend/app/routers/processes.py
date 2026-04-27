@@ -436,3 +436,41 @@ def withdraw_from_review(
         requester_role=auth.role,
     )
     return _to_admin_view(process)
+
+
+@router.post("/{process_id}/restore", response_model=ProcessAdminView)
+def restore_process(
+    process_id: UUID,
+    auth: TokenPayload = Depends(get_current_user_payload),
+    session: Session = Depends(get_session),
+) -> ProcessAdminView:
+    """ARCHIVED -> DRAFT. Apenas admin.
+
+    Permissao validada no service (`FORBIDDEN` para nao-admin) para manter o
+    padrao do router em `processes.py` — a fonte de verdade de quem pode o
+    que mora em process_service.
+    """
+    process = process_service.restore_process(
+        session, process_id, requester_role=auth.role
+    )
+    return _to_admin_view(process)
+
+
+@router.delete(
+    "/{process_id}/permanently",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_process_permanently(
+    process_id: UUID,
+    auth: TokenPayload = Depends(get_current_user_payload),
+    session: Session = Depends(get_session),
+) -> None:
+    """Hard delete. Apenas admin, e somente em ARCHIVED.
+
+    Mantemos `DELETE /processes/{id}` como soft delete (arquivar) para nao
+    quebrar clientes — o caminho `/permanently` deixa explicito que essa e
+    uma operacao destrutiva e irreversivel.
+    """
+    process_service.delete_process_permanently(
+        session, process_id, requester_role=auth.role
+    )

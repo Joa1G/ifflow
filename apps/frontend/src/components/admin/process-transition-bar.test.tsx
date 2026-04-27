@@ -164,4 +164,84 @@ describe("<ProcessTransitionBar />", () => {
 
     await waitFor(() => expect(called).toBe(true));
   });
+
+  it("ARCHIVED admin: mostra Restaurar e Excluir definitivamente, esconde os outros", () => {
+    renderBar("ARCHIVED", "admin");
+
+    expect(
+      screen.getByRole("button", { name: /Restaurar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Excluir definitivamente/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Arquivar$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Aprovar publicação/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Submeter para revisão/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ARCHIVED admin: clicar em Restaurar dispara POST /processes/:id/restore", async () => {
+    let called = false;
+    server.use(
+      http.post(`${BASE}/processes/${PROCESS_ID}/restore`, () => {
+        called = true;
+        return HttpResponse.json({
+          ...makeProcess("ARCHIVED"),
+          status: "DRAFT",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderBar("ARCHIVED", "admin");
+
+    await user.click(screen.getByRole("button", { name: /Restaurar/i }));
+
+    await waitFor(() => expect(called).toBe(true));
+  });
+
+  it("ARCHIVED admin: Excluir definitivamente abre confirm e só chama DELETE /permanently após confirmar", async () => {
+    let called = false;
+    server.use(
+      http.delete(`${BASE}/processes/${PROCESS_ID}/permanently`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderBar("ARCHIVED", "admin");
+
+    await user.click(
+      screen.getByRole("button", { name: /Excluir definitivamente/i }),
+    );
+
+    // Antes de confirmar, o backend não foi chamado.
+    expect(called).toBe(false);
+
+    // O AlertDialogAction renderiza outro botão "Excluir definitivamente"
+    // dentro do dialog — pegamos o último (o do dialog) pra confirmar.
+    const confirmButtons = await screen.findAllByRole("button", {
+      name: /Excluir definitivamente/i,
+    });
+    await user.click(confirmButtons[confirmButtons.length - 1]!);
+
+    await waitFor(() => expect(called).toBe(true));
+  });
+
+  it("ARCHIVED owner: não mostra Restaurar nem Excluir definitivamente (privilégio admin)", () => {
+    renderBar("ARCHIVED", "owner");
+
+    expect(
+      screen.queryByRole("button", { name: /Restaurar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Excluir definitivamente/i }),
+    ).not.toBeInTheDocument();
+  });
 });

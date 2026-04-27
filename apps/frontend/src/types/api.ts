@@ -331,7 +331,9 @@ export interface paths {
          *
          *     Usa `get_current_user_payload` (decodifica o JWT) em vez de
          *     `get_current_user` (SELECT no banco) pra manter o endpoint barato — aqui
-         *     so importa que o token e valido, nao os dados do User.
+         *     so importa que o token e valido. A autorizacao detalhada (published para
+         *     qualquer autenticado; DRAFT/IN_REVIEW/ARCHIVED so para autor ou admin)
+         *     mora no service.
          */
         get: operations["get_process_flow_processes__process_id__flow_get"];
         put?: never;
@@ -471,6 +473,54 @@ export interface paths {
          */
         post: operations["withdraw_from_review_processes__process_id__withdraw_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Process
+         * @description ARCHIVED -> DRAFT. Apenas admin.
+         *
+         *     Permissao validada no service (`FORBIDDEN` para nao-admin) para manter o
+         *     padrao do router em `processes.py` — a fonte de verdade de quem pode o
+         *     que mora em process_service.
+         */
+        post: operations["restore_process_processes__process_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/processes/{process_id}/permanently": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Process Permanently
+         * @description Hard delete. Apenas admin, e somente em ARCHIVED.
+         *
+         *     Mantemos `DELETE /processes/{id}` como soft delete (arquivar) para nao
+         *     quebrar clientes — o caminho `/permanently` deixa explicito que essa e
+         *     uma operacao destrutiva e irreversivel.
+         */
+        delete: operations["delete_process_permanently_processes__process_id__permanently_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2108,6 +2158,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProcessAdminView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_process_processes__process_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_process_permanently_processes__process_id__permanently_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

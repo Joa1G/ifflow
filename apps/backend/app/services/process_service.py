@@ -14,9 +14,9 @@ Regras de negocio encapsuladas aqui:
 - Toda mutacao apos a criacao recebe `requester_id` e `requester_role` para
   enforcar ownership e regras de role. Helpers `_assert_owner_or_admin` e
   `_assert_editable_status` centralizam essa logica.
-- ARCHIVED e terminal para edicao: um processo arquivado existe so para
-  auditoria/historico. Para reativar, a equipe decidiu que o fluxo e criar um
-  novo processo.
+- ARCHIVED e terminal para edicao direta: nao se edita um processo arquivado.
+  Admin pode `restore_process` (volta para DRAFT) ou `delete_process_permanently`
+  (remove em definitivo, com cascade nos steps/resources/user_progress).
 - IN_REVIEW e bloqueado para PATCH/edicao de steps/resources — autor (ou admin)
   precisa chamar `withdraw_from_review` antes de editar.
 - Listagem admin inclui TODOS os status; listagem por owner mostra so do
@@ -592,6 +592,89 @@ def approve_process(
         )
 
     return process
+
+
+def restore_process(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_role: UserRole,
+) -> Process:
+    """ARCHIVED -> DRAFT. Apenas admin/super_admin.
+
+    Reativa um processo arquivado para edicao. Volta sempre para DRAFT (nao
+    tentamos reconstruir o status anterior — o admin re-publica via fluxo
+    normal se for o caso). `approved_by` e mantido para nao apagar o
+    historico de quem aprovou na vida anterior — se o processo for
+    re-publicado, sera sobrescrito.
+    """
+    if not _is_admin(requester_role):
+        raise ForbiddenError(
+            "Apenas administradores podem restaurar processos arquivados.",
+            code="FORBIDDEN",
+        )
+
+    process = get_process_admin(session, process_id)
+
+    if process.status != ProcessStatus.ARCHIVED:
+        raise ConflictError(
+            "Apenas processos arquivados podem ser restaurados.",
+            code="INVALID_STATE_TRANSITION",
+            details={
+                "current_status": process.status.value,
+                "required_status": ProcessStatus.ARCHIVED.value,
+            },
+        )
+
+    process.status = ProcessStatus.DRAFT
+    process.updated_at = datetime.now(timezone.utc)
+    session.add(process)
+    session.commit()
+    session.refresh(process)
+    return process
+
+
+def delete_process_permanently(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_role: UserRole,
+) -> None:
+    """Hard delete. Apenas admin/super_admin, e somente em ARCHIVED.
+
+    Forcar passagem por ARCHIVED antes do hard delete e uma rede de seguranca:
+    deletar em definitivo um processo PUBLISHED apagaria progresso de servidores
+    sem aviso. ARCHIVED da chance de reverter (`restore_process`).
+
+    Cascades em jogo:
+    - `Process.steps` (ORM, all/delete-orphan) -> apaga FlowStep + StepResource
+      antes do DELETE no Process. Funciona em qualquer dialeto.
+    - `user_progress.process_id` (FK ON DELETE CASCADE) -> apaga progresso
+      individual dos usuarios. Em Postgres a integridade e do banco; em SQLite
+      sem PRAGMA foreign_keys=ON o cascade nao e aplicado, mas o conftest dos
+      testes nao depende disso (testes do hard delete focam em steps/resources
+      e na declaracao do FK).
+    """
+    if not _is_admin(requester_role):
+        raise ForbiddenError(
+            "Apenas administradores podem excluir processos definitivamente.",
+            code="FORBIDDEN",
+        )
+
+    process = get_process_admin(session, process_id)
+
+    if process.status != ProcessStatus.ARCHIVED:
+        raise ConflictError(
+            "Apenas processos arquivados podem ser excluidos definitivamente.",
+            code="PROCESS_NOT_DELETABLE",
+            details={
+                "current_status": process.status.value,
+                "required_status": ProcessStatus.ARCHIVED.value,
+            },
+        )
+
+    session.delete(process)
+    session.commit()
 
 
 # ---------- Listagem publica (B-19) ----------
