@@ -1,6 +1,7 @@
 import { ListPlus, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { StepDetailModal } from "../flow/step-detail-modal";
 import type { components } from "../../types/api";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
@@ -35,6 +36,8 @@ export function StepsSection({
 }: StepsSectionProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<FlowStepRead | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailStep, setDetailStep] = useState<FlowStepRead | null>(null);
 
   const sortedSteps = useMemo(() => {
     if (!steps) return [];
@@ -54,6 +57,11 @@ export function StepsSection({
   const openEdit = (step: FlowStepRead) => {
     setEditing(step);
     setEditorOpen(true);
+  };
+
+  const openDetails = (step: FlowStepRead) => {
+    setDetailStep(step);
+    setDetailOpen(true);
   };
 
   if (isLoading) {
@@ -117,6 +125,7 @@ export function StepsSection({
               index < sortedSteps.length - 1 ? sortedSteps[index + 1]! : null
             }
             onEdit={openEdit}
+            onViewDetails={openDetails}
             editable={editable}
           />
         ))}
@@ -142,6 +151,11 @@ export function StepsSection({
           onOpenChange={setEditorOpen}
         />
       ) : null}
+      <StepDetailModal
+        step={detailStep}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </>
   );
 }
