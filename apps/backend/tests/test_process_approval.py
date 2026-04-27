@@ -58,7 +58,7 @@ def _create_process(client: TestClient, headers: dict, **overrides) -> dict:
         "requirements": [],
     }
     payload.update(overrides)
-    response = client.post("/admin/processes", json=payload, headers=headers)
+    response = client.post("/processes", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -71,7 +71,7 @@ def test_submit_draft_para_in_review(client: TestClient, session: Session):
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -83,12 +83,12 @@ def test_submit_processo_ja_in_review_retorna_409(client: TestClient, session: S
     admin = _create_user(session, email="admin.sr@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
     response = client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -102,7 +102,7 @@ def test_submit_processo_published_retorna_409(client: TestClient, session: Sess
     admin = _create_user(session, email="admin.sp@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
     client.post(
@@ -111,7 +111,7 @@ def test_submit_processo_published_retorna_409(client: TestClient, session: Sess
     )
 
     response = client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -122,10 +122,10 @@ def test_submit_processo_published_retorna_409(client: TestClient, session: Sess
 def test_submit_processo_archived_retorna_409(client: TestClient, session: Session):
     admin = _create_user(session, email="admin.sar@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
-    client.delete(f"/admin/processes/{process['id']}", headers=_auth_headers(admin))
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -137,7 +137,7 @@ def test_submit_sem_auth_retorna_401(client: TestClient, session: Session):
     admin = _create_user(session, email="admin.sna@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
 
-    response = client.post(f"/admin/processes/{process['id']}/submit-for-review")
+    response = client.post(f"/processes/{process['id']}/submit-for-review")
 
     assert response.status_code == 401
 
@@ -148,7 +148,7 @@ def test_submit_como_user_comum_retorna_403(client: TestClient, session: Session
     process = _create_process(client, _auth_headers(admin))
 
     response = client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(user),
     )
 
@@ -159,7 +159,7 @@ def test_submit_processo_inexistente_retorna_404(client: TestClient, session: Se
     admin = _create_user(session, email="admin.sn@ifam.edu.br")
 
     response = client.post(
-        f"/admin/processes/{uuid4()}/submit-for-review",
+        f"/processes/{uuid4()}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -178,7 +178,7 @@ def test_approve_in_review_publica_e_seta_approved_by(
     approver = _create_user(session, email="admin.a@ifam.edu.br")
     process = _create_process(client, _auth_headers(creator))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(creator),
     )
 
@@ -215,7 +215,7 @@ def test_approve_ja_published_retorna_409(client: TestClient, session: Session):
     admin = _create_user(session, email="admin.ap@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
     client.post(
@@ -235,7 +235,7 @@ def test_approve_ja_published_retorna_409(client: TestClient, session: Session):
 def test_approve_archived_retorna_409(client: TestClient, session: Session):
     admin = _create_user(session, email="admin.aa@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
-    client.delete(f"/admin/processes/{process['id']}", headers=_auth_headers(admin))
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
 
     response = client.post(
         f"/admin/processes/{process['id']}/approve",
@@ -259,7 +259,7 @@ def test_approve_como_user_comum_retorna_403(client: TestClient, session: Sessio
     user = _create_user(session, email="u.au@ifam.edu.br", role=UserRole.USER)
     process = _create_process(client, _auth_headers(admin))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -288,7 +288,7 @@ def test_approve_ignora_approved_by_do_body(client: TestClient, session: Session
     approver = _create_user(session, email="admin.bs2@ifam.edu.br")
     process = _create_process(client, _auth_headers(creator))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(creator),
     )
 
@@ -318,7 +318,7 @@ def test_auto_aprovacao_permitida_mas_registrada_em_log(
     admin = _create_user(session, email="admin.self@ifam.edu.br")
     process = _create_process(client, _auth_headers(admin))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(admin),
     )
 
@@ -344,7 +344,7 @@ def test_aprovacao_por_terceiro_nao_emite_warning(
     approver = _create_user(session, email="admin.n2@ifam.edu.br")
     process = _create_process(client, _auth_headers(creator))
     client.post(
-        f"/admin/processes/{process['id']}/submit-for-review",
+        f"/processes/{process['id']}/submit-for-review",
         headers=_auth_headers(creator),
     )
 

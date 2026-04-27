@@ -1,4 +1,11 @@
-import { ClipboardList, LogOut, Shield, ShieldCheck } from "lucide-react";
+import {
+  ClipboardList,
+  FilePlus2,
+  Files,
+  LogOut,
+  Shield,
+  ShieldCheck,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -107,6 +114,8 @@ function UserMenu({ user, onLogout }: UserMenuProps) {
             {user.email}
           </span>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <UserProcessMenuItems />
         {isAdmin && (
           <>
             <DropdownMenuSeparator />
@@ -153,6 +162,32 @@ function AdminNotificationDot() {
       aria-label={`${total} ${total === 1 ? "item pendente de aprovação" : "itens pendentes de aprovação"}`}
       className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-ifflow-paper"
     />
+  );
+}
+
+/**
+ * Atalhos de gestão de processos para qualquer usuário autenticado.
+ *
+ * Após a regra "USER cria processos / ADMIN aprova" (2026-04-25), criar e
+ * acompanhar processos próprios deixou de ser exclusivo de admin — por isso
+ * estes itens vivem fora do bloco gated por `isAdmin` no UserMenu.
+ */
+function UserProcessMenuItems() {
+  return (
+    <>
+      <DropdownMenuItem asChild>
+        <Link to="/processes/new" className="cursor-pointer">
+          <FilePlus2 className="mr-2 h-4 w-4" aria-hidden />
+          Criar processo
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <Link to="/processes/mine" className="cursor-pointer">
+          <Files className="mr-2 h-4 w-4" aria-hidden />
+          Meus processos
+        </Link>
+      </DropdownMenuItem>
+    </>
   );
 }
 

@@ -7,8 +7,8 @@ import { useAuth } from "./use-auth";
 
 type PendingUsersListResponse =
   components["schemas"]["PendingUsersListResponse"];
-type ProcessesAdminListResponse =
-  components["schemas"]["ProcessesAdminListResponse"];
+type ProcessesManagementListResponse =
+  components["schemas"]["ProcessesManagementListResponse"];
 
 export interface AdminNotifications {
   pendingUsersCount: number;
@@ -38,7 +38,7 @@ export function useAdminNotifications(): AdminNotifications {
 
   // As duas chaves abaixo PRECISAM bater com `PENDING_USERS_KEY` em
   // use-admin-users.ts e com `adminProcessesListQueryKey({status: "IN_REVIEW"})`
-  // em use-admin-processes.ts — assim a página admin e o badge consomem
+  // em use-processes-management.ts — assim a página admin e o badge consomem
   // o mesmo bucket de cache, e as mutations de aprovar (que já invalidam
   // essas chaves) atualizam o badge sem código extra.
   const usersQuery = useQuery<PendingUsersListResponse, ApiError>({
@@ -47,10 +47,10 @@ export function useAdminNotifications(): AdminNotifications {
     enabled: isAdmin,
   });
 
-  const processesQuery = useQuery<ProcessesAdminListResponse, ApiError>({
+  const processesQuery = useQuery<ProcessesManagementListResponse, ApiError>({
     queryKey: ["admin-processes-list", { status: "IN_REVIEW" }],
     queryFn: () =>
-      apiGet<ProcessesAdminListResponse>(
+      apiGet<ProcessesManagementListResponse>(
         "/admin/processes?status=IN_REVIEW",
       ),
     enabled: isAdmin,

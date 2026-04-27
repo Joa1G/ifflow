@@ -2,10 +2,10 @@
 
 Foco:
 - Autenticacao: 401 sem token.
-- Filtro PUBLISHED: 404 em DRAFT/IN_REVIEW/ARCHIVED/inexistente (mesmo tratamento).
+- Processos PUBLISHED sao visiveis a qualquer autenticado.
+- Processos nao publicados sao visiveis apenas ao autor ou admin.
 - Ordenacao dos steps por order_index asc (criados fora de ordem).
 - Envelope ProcessFullFlow com sector embutido e lista de resources por step.
-- USER comum (nao-admin) consegue acessar (endpoint so exige auth).
 """
 
 from uuid import uuid4
@@ -280,11 +280,21 @@ def test_token_invalido_retorna_401(client: TestClient, session: Session):
     assert response.status_code == 401
 
 
-# ---------- 404 por status nao-publicado ----------
+# ---------- acesso por status / ownership ----------
 
 
-def test_flow_de_draft_retorna_404(client: TestClient, session: Session):
+def test_autor_consegue_ver_flow_do_proprio_draft(client: TestClient, session: Session):
     admin = _create_user(session, email="a8@ifam.edu.br", role=UserRole.ADMIN)
+    process = _create_process(session, created_by=admin.id, status=ProcessStatus.DRAFT)
+
+    response = client.get(f"/processes/{process.id}/flow", headers=_auth_headers(admin))
+
+    assert response.status_code == 200
+    assert response.json()["process"]["id"] == str(process.id)
+
+
+def test_terceiro_recebe_404_no_flow_de_draft(client: TestClient, session: Session):
+    admin = _create_user(session, email="a8b@ifam.edu.br", role=UserRole.ADMIN)
     user = _create_user(session, email="u8@ifam.edu.br")
     process = _create_process(session, created_by=admin.id, status=ProcessStatus.DRAFT)
 
@@ -294,9 +304,23 @@ def test_flow_de_draft_retorna_404(client: TestClient, session: Session):
     assert response.json()["error"]["code"] == "PROCESS_NOT_FOUND"
 
 
-def test_flow_de_in_review_retorna_404(client: TestClient, session: Session):
-    admin = _create_user(session, email="a9@ifam.edu.br", role=UserRole.ADMIN)
+def test_autor_consegue_ver_flow_do_proprio_in_review(
+    client: TestClient, session: Session
+):
     user = _create_user(session, email="u9@ifam.edu.br")
+    process = _create_process(
+        session, created_by=user.id, status=ProcessStatus.IN_REVIEW
+    )
+
+    response = client.get(f"/processes/{process.id}/flow", headers=_auth_headers(user))
+
+    assert response.status_code == 200
+    assert response.json()["process"]["id"] == str(process.id)
+
+
+def test_terceiro_recebe_404_no_flow_de_in_review(client: TestClient, session: Session):
+    admin = _create_user(session, email="a9@ifam.edu.br", role=UserRole.ADMIN)
+    user = _create_user(session, email="u9b@ifam.edu.br")
     process = _create_process(
         session, created_by=admin.id, status=ProcessStatus.IN_REVIEW
     )

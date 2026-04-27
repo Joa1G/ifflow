@@ -65,12 +65,12 @@ function renderDialog() {
 }
 
 describe("<StepEditorDialog /> em modo create", () => {
-  it("submete POST /admin/processes/:id/steps com os campos preenchidos", async () => {
+  it("submete POST /processes/:id/steps com os campos preenchidos", async () => {
     let receivedBody: unknown = null;
     server.use(
       http.get(`${BASE}/sectors`, () => HttpResponse.json(sectorsPayload)),
       http.post(
-        `${BASE}/admin/processes/${PROCESS_ID}/steps`,
+        `${BASE}/processes/${PROCESS_ID}/steps`,
         async ({ request }) => {
           receivedBody = await request.json();
           return HttpResponse.json({});

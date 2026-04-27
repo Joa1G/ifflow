@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   useCreateStep,
   useUpdateStep,
-} from "../../hooks/use-admin-processes";
+} from "../../hooks/use-processes-management";
 import { useSectors } from "../../hooks/use-sectors";
 import {
   flowStepSchema,

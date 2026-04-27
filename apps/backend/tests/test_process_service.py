@@ -1,13 +1,18 @@
-"""Testes do process_service (B-15).
+"""Testes do process_service.
 
-Cobre as 5 funcoes publicas do modulo (create/update/archive/list/get).
+Cobre as funcoes publicas do modulo:
+- create/update/archive/list/get (admin + owner)
+- submit_for_review / withdraw_from_review / approve_process
+- get_process_for_management / list_processes_for_owner
 
 Foco:
-- Regras de negocio do service, nao do router (router vem em B-16).
-- Transicoes de estado barradas (editar ARCHIVED, arquivar duas vezes).
+- Regras de negocio do service, nao do router.
+- Transicoes de estado barradas (editar ARCHIVED, editar IN_REVIEW, arquivar
+  duas vezes, withdraw fora de IN_REVIEW).
+- Ownership/role: USER so toca em processo proprio; admin toca em qualquer.
 - created_by e sempre o argumento passado — nunca um valor "vazado" do schema.
 - Listagem admin inclui DRAFT/IN_REVIEW/ARCHIVED (diferente da listagem
-  publica de B-19, que filtra so PUBLISHED).
+  publica, que filtra so PUBLISHED).
 """
 
 from uuid import uuid4
@@ -16,7 +21,7 @@ import pytest
 from sqlmodel import Session
 
 from app.core.enums import ProcessCategory, ProcessStatus, UserRole, UserStatus
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.process import ProcessCreate, ProcessUpdate
@@ -37,6 +42,30 @@ def _create_admin(session: Session, *, email: str = "admin.proc@ifam.edu.br") ->
     session.commit()
     session.refresh(user)
     return user
+
+
+def _create_user(session: Session, *, email: str) -> User:
+    user = User(
+        name=f"User {email}",
+        email=email,
+        siape="3333333",
+        sector="PROAD",
+        password_hash=hash_password("senhaForte123"),
+        role=UserRole.USER,
+        status=UserStatus.APPROVED,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def _admin_kwargs(admin: User) -> dict:
+    return {"requester_id": admin.id, "requester_role": admin.role}
+
+
+def _user_kwargs(user: User) -> dict:
+    return {"requester_id": user.id, "requester_role": user.role}
 
 
 def _process_payload(**overrides) -> ProcessCreate:
@@ -125,7 +154,9 @@ def test_list_processes_admin_inclui_todos_os_status(session: Session):
     archived_src = process_service.create_process(
         session, _process_payload(title="ArchivedSrc"), created_by=admin.id
     )
-    archived = process_service.archive_process(session, archived_src.id)
+    archived = process_service.archive_process(
+        session, archived_src.id, **_admin_kwargs(admin)
+    )
 
     results = process_service.list_processes_admin(session)
 
@@ -143,7 +174,7 @@ def test_list_processes_admin_filtra_por_status(session: Session):
     second = process_service.create_process(
         session, _process_payload(title="B"), created_by=admin.id
     )
-    process_service.archive_process(session, second.id)
+    process_service.archive_process(session, second.id, **_admin_kwargs(admin))
 
     archived = process_service.list_processes_admin(
         session, status=ProcessStatus.ARCHIVED
@@ -187,6 +218,7 @@ def test_update_process_atualiza_campos_enviados(session: Session):
         session,
         created.id,
         ProcessUpdate(title="Novo titulo", estimated_time="10 dias"),
+        **_admin_kwargs(admin),
     )
 
     assert updated.title == "Novo titulo"
@@ -201,21 +233,85 @@ def test_update_process_bloqueia_se_archived(session: Session):
     created = process_service.create_process(
         session, _process_payload(), created_by=admin.id
     )
-    process_service.archive_process(session, created.id)
+    process_service.archive_process(session, created.id, **_admin_kwargs(admin))
 
     with pytest.raises(ConflictError) as exc:
         process_service.update_process(
-            session, created.id, ProcessUpdate(title="Tarde demais")
+            session,
+            created.id,
+            ProcessUpdate(title="Tarde demais"),
+            **_admin_kwargs(admin),
         )
 
     assert exc.value.code == "PROCESS_NOT_EDITABLE"
 
 
+def test_update_process_bloqueia_se_in_review(session: Session):
+    """IN_REVIEW e locked — autor (ou admin) precisa withdraw antes."""
+    admin = _create_admin(session)
+    created = process_service.create_process(
+        session, _process_payload(), created_by=admin.id
+    )
+    process_service.submit_for_review(session, created.id, **_admin_kwargs(admin))
+
+    with pytest.raises(ConflictError) as exc:
+        process_service.update_process(
+            session,
+            created.id,
+            ProcessUpdate(title="Editar em revisao"),
+            **_admin_kwargs(admin),
+        )
+
+    assert exc.value.code == "PROCESS_LOCKED_IN_REVIEW"
+
+
 def test_update_process_not_found(session: Session):
+    admin = _create_admin(session)
     with pytest.raises(NotFoundError) as exc:
-        process_service.update_process(session, uuid4(), ProcessUpdate(title="Foo"))
+        process_service.update_process(
+            session,
+            uuid4(),
+            ProcessUpdate(title="Foo"),
+            **_admin_kwargs(admin),
+        )
 
     assert exc.value.code == "PROCESS_NOT_FOUND"
+
+
+def test_update_process_user_nao_dono_recebe_403(session: Session):
+    owner = _create_user(session, email="owner.update@ifam.edu.br")
+    other = _create_user(session, email="other.update@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.update_process(
+            session,
+            created.id,
+            ProcessUpdate(title="Hack"),
+            **_user_kwargs(other),
+        )
+
+    assert exc.value.code == "PROCESS_NOT_OWNED"
+
+
+def test_update_process_admin_pode_editar_processo_de_user(session: Session):
+    """Admin tem override de ownership — edita DRAFT alheio."""
+    owner = _create_user(session, email="owner.adminover@ifam.edu.br")
+    admin = _create_admin(session, email="admin.over@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    updated = process_service.update_process(
+        session,
+        created.id,
+        ProcessUpdate(title="Ajuste de admin"),
+        **_admin_kwargs(admin),
+    )
+
+    assert updated.title == "Ajuste de admin"
 
 
 def test_update_process_substitui_requirements_por_lista_enviada(session: Session):
@@ -230,6 +326,7 @@ def test_update_process_substitui_requirements_por_lista_enviada(session: Sessio
         session,
         created.id,
         ProcessUpdate(requirements=["Requisito A", "Requisito B"]),
+        **_admin_kwargs(admin),
     )
 
     assert updated.requirements == ["Requisito A", "Requisito B"]
@@ -244,7 +341,9 @@ def test_archive_process_muda_status_para_archived(session: Session):
         session, _process_payload(), created_by=admin.id
     )
 
-    archived = process_service.archive_process(session, created.id)
+    archived = process_service.archive_process(
+        session, created.id, **_admin_kwargs(admin)
+    )
 
     assert archived.status == ProcessStatus.ARCHIVED
 
@@ -254,19 +353,194 @@ def test_archive_process_levanta_se_ja_arquivado(session: Session):
     created = process_service.create_process(
         session, _process_payload(), created_by=admin.id
     )
-    process_service.archive_process(session, created.id)
+    process_service.archive_process(session, created.id, **_admin_kwargs(admin))
 
     with pytest.raises(ConflictError) as exc:
-        process_service.archive_process(session, created.id)
+        process_service.archive_process(session, created.id, **_admin_kwargs(admin))
 
     assert exc.value.code == "PROCESS_ALREADY_ARCHIVED"
 
 
 def test_archive_process_not_found(session: Session):
+    admin = _create_admin(session)
     with pytest.raises(NotFoundError) as exc:
-        process_service.archive_process(session, uuid4())
+        process_service.archive_process(session, uuid4(), **_admin_kwargs(admin))
 
     assert exc.value.code == "PROCESS_NOT_FOUND"
+
+
+def test_archive_process_user_dono_pode_em_draft(session: Session):
+    owner = _create_user(session, email="owner.archd@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    archived = process_service.archive_process(
+        session, created.id, **_user_kwargs(owner)
+    )
+
+    assert archived.status == ProcessStatus.ARCHIVED
+
+
+def test_archive_process_user_dono_nao_pode_published(session: Session):
+    """USER nao pode arquivar PUBLISHED — decisao institucional, requer admin."""
+    owner = _create_user(session, email="owner.archpub@ifam.edu.br")
+    admin = _create_admin(session, email="admin.archpub@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+    process_service.submit_for_review(session, created.id, **_user_kwargs(owner))
+    process_service.approve_process(session, created.id, approver_id=admin.id)
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.archive_process(session, created.id, **_user_kwargs(owner))
+
+    assert exc.value.code == "PROCESS_ARCHIVE_REQUIRES_ADMIN"
+
+
+def test_archive_process_user_nao_dono_recebe_403(session: Session):
+    owner = _create_user(session, email="owner.archnp@ifam.edu.br")
+    other = _create_user(session, email="other.archnp@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.archive_process(session, created.id, **_user_kwargs(other))
+
+    assert exc.value.code == "PROCESS_NOT_OWNED"
+
+
+# ---------- submit_for_review / withdraw_from_review ----------
+
+
+def test_submit_for_review_owner_promove_draft_para_in_review(session: Session):
+    owner = _create_user(session, email="owner.sub@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    submitted = process_service.submit_for_review(
+        session, created.id, **_user_kwargs(owner)
+    )
+
+    assert submitted.status == ProcessStatus.IN_REVIEW
+
+
+def test_submit_for_review_user_nao_dono_recebe_403(session: Session):
+    owner = _create_user(session, email="owner.sub2@ifam.edu.br")
+    other = _create_user(session, email="other.sub2@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.submit_for_review(session, created.id, **_user_kwargs(other))
+
+    assert exc.value.code == "PROCESS_NOT_OWNED"
+
+
+def test_withdraw_from_review_owner_volta_para_draft(session: Session):
+    owner = _create_user(session, email="owner.wd@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+    process_service.submit_for_review(session, created.id, **_user_kwargs(owner))
+
+    withdrawn = process_service.withdraw_from_review(
+        session, created.id, **_user_kwargs(owner)
+    )
+
+    assert withdrawn.status == ProcessStatus.DRAFT
+
+
+def test_withdraw_from_review_em_draft_retorna_409(session: Session):
+    admin = _create_admin(session, email="admin.wd.draft@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=admin.id
+    )
+
+    with pytest.raises(ConflictError) as exc:
+        process_service.withdraw_from_review(
+            session, created.id, **_admin_kwargs(admin)
+        )
+
+    assert exc.value.code == "INVALID_STATE_TRANSITION"
+    assert exc.value.details["current_status"] == "DRAFT"
+
+
+def test_withdraw_from_review_user_nao_dono_recebe_403(session: Session):
+    owner = _create_user(session, email="owner.wdnp@ifam.edu.br")
+    other = _create_user(session, email="other.wdnp@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+    process_service.submit_for_review(session, created.id, **_user_kwargs(owner))
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.withdraw_from_review(session, created.id, **_user_kwargs(other))
+
+    assert exc.value.code == "PROCESS_NOT_OWNED"
+
+
+# ---------- list_processes_for_owner / get_process_for_management ----------
+
+
+def test_list_processes_for_owner_so_retorna_do_dono(session: Session):
+    owner = _create_user(session, email="owner.list@ifam.edu.br")
+    other = _create_user(session, email="other.list@ifam.edu.br")
+    process_service.create_process(
+        session, _process_payload(title="Meu"), created_by=owner.id
+    )
+    process_service.create_process(
+        session, _process_payload(title="Alheio"), created_by=other.id
+    )
+
+    results = process_service.list_processes_for_owner(session, owner_id=owner.id)
+
+    assert {p.title for p in results} == {"Meu"}
+
+
+def test_get_process_for_management_owner_retorna_processo(session: Session):
+    owner = _create_user(session, email="owner.mgmt@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    fetched = process_service.get_process_for_management(
+        session, created.id, **_user_kwargs(owner)
+    )
+
+    assert fetched.id == created.id
+
+
+def test_get_process_for_management_user_nao_dono_recebe_403(session: Session):
+    owner = _create_user(session, email="owner.mgmtnp@ifam.edu.br")
+    other = _create_user(session, email="other.mgmtnp@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    with pytest.raises(ForbiddenError) as exc:
+        process_service.get_process_for_management(
+            session, created.id, **_user_kwargs(other)
+        )
+
+    assert exc.value.code == "PROCESS_NOT_OWNED"
+
+
+def test_get_process_for_management_admin_pode_em_qualquer_processo(session: Session):
+    owner = _create_user(session, email="owner.mgmtadm@ifam.edu.br")
+    admin = _create_admin(session, email="admin.mgmt@ifam.edu.br")
+    created = process_service.create_process(
+        session, _process_payload(), created_by=owner.id
+    )
+
+    fetched = process_service.get_process_for_management(
+        session, created.id, **_admin_kwargs(admin)
+    )
+
+    assert fetched.id == created.id
 
 
 # ---------- schema-level guards ----------

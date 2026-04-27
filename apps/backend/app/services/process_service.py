@@ -1,19 +1,26 @@
-"""Service de CRUD de Process (admin).
+"""Service de CRUD de Process.
 
 Services NAO conhecem FastAPI — levantam excecoes de app.core.exceptions que
 o router traduz para HTTP.
 
 Regras de negocio encapsuladas aqui:
 - Todo processo nasce em DRAFT, access_count=0.
+- USER autenticado pode criar/editar/submeter/arquivar/withdraw os PROPRIOS
+  processos. Admin pode tudo isso em qualquer processo, e e o unico que
+  aprova (DRAFT/IN_REVIEW -> PUBLISHED) e que arquiva PUBLISHED.
 - created_by e passado explicitamente pelo router (vem do JWT), nunca do body.
   Isso e o que impede mass assignment: mesmo que o schema aceitasse
   `created_by`, o service ignoraria o valor do cliente.
+- Toda mutacao apos a criacao recebe `requester_id` e `requester_role` para
+  enforcar ownership e regras de role. Helpers `_assert_owner_or_admin` e
+  `_assert_editable_status` centralizam essa logica.
 - ARCHIVED e terminal para edicao: um processo arquivado existe so para
   auditoria/historico. Para reativar, a equipe decidiu que o fluxo e criar um
-  novo processo (mais simples que permitir unarchive e lidar com progresso
-  orfao dos usuarios).
-- Listagem admin inclui TODOS os status — e o unico lugar onde DRAFT/IN_REVIEW
-  aparecem. A listagem publica (B-19) filtra so PUBLISHED.
+  novo processo.
+- IN_REVIEW e bloqueado para PATCH/edicao de steps/resources — autor (ou admin)
+  precisa chamar `withdraw_from_review` antes de editar.
+- Listagem admin inclui TODOS os status; listagem por owner mostra so do
+  proprio servidor; listagem publica (B-19) filtra so PUBLISHED.
 """
 
 import logging
@@ -24,8 +31,8 @@ from sqlalchemy import String, cast, func, or_, update
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.core.enums import ProcessCategory, ProcessStatus
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.enums import ProcessCategory, ProcessStatus, UserRole
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.flow_step import FlowStep
 from app.models.process import Process
 from app.models.sector import Sector
@@ -39,6 +46,54 @@ from app.schemas.process import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------- Helpers de autorizacao ----------
+#
+# USER comum agora cria/edita seus proprios processos. Admin segue podendo
+# tudo. Os helpers abaixo centralizam as duas regras transversais —
+# "ownership ou admin" e "transicoes de status que cada role pode disparar".
+
+
+def _is_admin(role: UserRole) -> bool:
+    return role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+
+
+def _assert_owner_or_admin(
+    process: Process, requester_id: UUID, requester_role: UserRole
+) -> None:
+    """Bloqueia USER de tocar em processo que nao criou.
+
+    Codigo `PROCESS_NOT_OWNED` (403) — distinto de `FORBIDDEN` generico para
+    o frontend poder dar mensagem especifica ("este processo pertence a outro
+    servidor").
+    """
+    if process.created_by == requester_id or _is_admin(requester_role):
+        return
+    raise ForbiddenError(
+        "Voce nao tem permissao para alterar este processo.",
+        code="PROCESS_NOT_OWNED",
+    )
+
+
+def _assert_editable_status(process: Process) -> None:
+    """Bloqueia mutacoes em ARCHIVED (terminal) e IN_REVIEW (locked).
+
+    IN_REVIEW so pode ser editado se o autor (ou admin) chamar `withdraw`
+    primeiro — isso evita que mudancas escapem do olhar do revisor.
+    """
+    if process.status == ProcessStatus.ARCHIVED:
+        raise ConflictError(
+            "Processos arquivados nao podem ser editados.",
+            code="PROCESS_NOT_EDITABLE",
+            details={"current_status": process.status.value},
+        )
+    if process.status == ProcessStatus.IN_REVIEW:
+        raise ConflictError(
+            "Processo em revisao. Volte para rascunho antes de editar.",
+            code="PROCESS_LOCKED_IN_REVIEW",
+            details={"current_status": process.status.value},
+        )
 
 
 def create_process(
@@ -102,8 +157,56 @@ def list_processes_admin(
     return list(session.exec(statement).all())
 
 
-def update_process(session: Session, process_id: UUID, data: ProcessUpdate) -> Process:
-    """Edita campos de um processo. Bloqueia edicao de ARCHIVED (409).
+def get_process_for_management(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
+    """Versao "ownership-aware" de get_process_admin.
+
+    Devolve o processo se o requester for autor ou admin; caso contrario,
+    levanta `PROCESS_NOT_OWNED` (403). Usado pelo endpoint
+    GET /processes/{id}/management — o frontend chama isso pra carregar o
+    editor de um processo onde o usuario tem permissao de gestao.
+    """
+    process = get_process_admin(session, process_id)
+    _assert_owner_or_admin(process, requester_id, requester_role)
+    return process
+
+
+def list_processes_for_owner(
+    session: Session,
+    *,
+    owner_id: UUID,
+    status: ProcessStatus | None = None,
+    category: ProcessCategory | None = None,
+) -> list[Process]:
+    """Lista processos cujo `created_by` e `owner_id` (qualquer status).
+
+    Usada pela tela "Meus processos" do USER. Admin que queira ver os
+    proprios processos tambem pode usar — para ver tudo, ele cai na
+    listagem admin (ver list_processes_admin).
+    """
+    statement = select(Process).where(Process.created_by == owner_id)
+    if status is not None:
+        statement = statement.where(Process.status == status)
+    if category is not None:
+        statement = statement.where(Process.category == category)
+    statement = statement.order_by(Process.created_at.desc())  # type: ignore[attr-defined]
+    return list(session.exec(statement).all())
+
+
+def update_process(
+    session: Session,
+    process_id: UUID,
+    data: ProcessUpdate,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
+    """Edita campos de um processo. Owner OU admin; bloqueia ARCHIVED/IN_REVIEW.
 
     Usa model_dump(exclude_unset=True) para aplicar semantica PATCH — so os
     campos enviados pelo cliente sao atualizados. Status/approved_by/
@@ -111,13 +214,8 @@ def update_process(session: Session, process_id: UUID, data: ProcessUpdate) -> P
     schema ProcessUpdate).
     """
     process = get_process_admin(session, process_id)
-
-    if process.status == ProcessStatus.ARCHIVED:
-        raise ConflictError(
-            "Processos arquivados nao podem ser editados.",
-            code="PROCESS_NOT_EDITABLE",
-            details={"current_status": process.status.value},
-        )
+    _assert_owner_or_admin(process, requester_id, requester_role)
+    _assert_editable_status(process)
 
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -130,19 +228,38 @@ def update_process(session: Session, process_id: UUID, data: ProcessUpdate) -> P
     return process
 
 
-def archive_process(session: Session, process_id: UUID) -> Process:
+def archive_process(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
     """Soft delete — marca como ARCHIVED.
 
+    Permissao:
+    - Admin pode arquivar processos em qualquer status (DRAFT/IN_REVIEW/PUBLISHED).
+    - Autor pode arquivar somente os proprios DRAFT ou IN_REVIEW. Para arquivar
+      um processo ja PUBLISHED a decisao e institucional — passa pelo admin.
+
     Idempotencia deliberadamente NAO implementada: arquivar um processo ja
-    arquivado e provavelmente um bug do admin (clique duplo, race entre abas).
+    arquivado e provavelmente um bug do cliente (clique duplo, race entre abas).
     Responder 409 da feedback util em vez de silenciar.
     """
     process = get_process_admin(session, process_id)
+    _assert_owner_or_admin(process, requester_id, requester_role)
 
     if process.status == ProcessStatus.ARCHIVED:
         raise ConflictError(
             "Processo ja esta arquivado.",
             code="PROCESS_ALREADY_ARCHIVED",
+            details={"current_status": process.status.value},
+        )
+
+    if not _is_admin(requester_role) and process.status == ProcessStatus.PUBLISHED:
+        raise ForbiddenError(
+            "Apenas administradores podem arquivar processos publicados.",
+            code="PROCESS_ARCHIVE_REQUIRES_ADMIN",
             details={"current_status": process.status.value},
         )
 
@@ -157,21 +274,26 @@ def archive_process(session: Session, process_id: UUID) -> Process:
 # ---------- FlowStep (B-17) ----------
 
 
-def _ensure_process_editable(session: Session, process_id: UUID) -> Process:
-    """Garante que o processo existe e nao esta ARCHIVED.
+def _ensure_process_editable(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
+    """Garante que o processo existe, e que o requester pode edita-lo agora.
 
-    Usado por todas as mutacoes de step/resource. Bloquear edicao de fluxo
-    em processos arquivados evita que um processo historico seja alterado
-    acidentalmente — se precisar revisar, o admin tem que desarquivar (ou
-    criar uma nova versao, conforme decisao da equipe).
+    Usado por todas as mutacoes de step/resource. Aplica em sequencia:
+      1. processo existe (404 PROCESS_NOT_FOUND)
+      2. requester e dono OU admin (403 PROCESS_NOT_OWNED)
+      3. status permite edicao — nem ARCHIVED nem IN_REVIEW (409)
+
+    A ordem importa: ownership antes de status para nao vazar a existencia
+    de um DRAFT alheio via mensagem "PROCESS_LOCKED_IN_REVIEW".
     """
     process = get_process_admin(session, process_id)
-    if process.status == ProcessStatus.ARCHIVED:
-        raise ConflictError(
-            "Processos arquivados nao podem ter fluxo editado.",
-            code="PROCESS_NOT_EDITABLE",
-            details={"current_status": process.status.value},
-        )
+    _assert_owner_or_admin(process, requester_id, requester_role)
+    _assert_editable_status(process)
     return process
 
 
@@ -195,10 +317,17 @@ def _load_step_in_process(
 
 
 def create_flow_step(
-    session: Session, process_id: UUID, data: FlowStepCreate
+    session: Session,
+    process_id: UUID,
+    data: FlowStepCreate,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> FlowStep:
-    """Adiciona uma etapa ao fluxo de um processo nao-arquivado."""
-    _ensure_process_editable(session, process_id)
+    """Adiciona uma etapa ao fluxo de um processo editavel pelo requester."""
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
 
     # Valida sector — sem esta checagem, o insert falharia com FK error no
     # Postgres (500 para o cliente) e passaria silenciosamente no SQLite.
@@ -229,13 +358,18 @@ def update_flow_step(
     process_id: UUID,
     step_id: UUID,
     data: FlowStepUpdate,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> FlowStep:
     """Edita uma etapa. `order` permite reordenacao.
 
     Renomeia `order` (schema) -> `order_index` (model). Valida sector novo
     se foi enviado. IDOR barrado em _load_step_in_process.
     """
-    _ensure_process_editable(session, process_id)
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
     step = _load_step_in_process(session, process_id, step_id)
 
     updates = data.model_dump(exclude_unset=True)
@@ -258,9 +392,18 @@ def update_flow_step(
     return step
 
 
-def delete_flow_step(session: Session, process_id: UUID, step_id: UUID) -> None:
+def delete_flow_step(
+    session: Session,
+    process_id: UUID,
+    step_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> None:
     """Remove uma etapa. Os resources vinculados somem via cascade ORM."""
-    _ensure_process_editable(session, process_id)
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
     step = _load_step_in_process(session, process_id, step_id)
 
     session.delete(step)
@@ -288,9 +431,14 @@ def create_step_resource(
     process_id: UUID,
     step_id: UUID,
     data: StepResourceCreate,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> StepResource:
     """Adiciona um recurso a uma etapa. Dupla validacao IDOR (process->step)."""
-    _ensure_process_editable(session, process_id)
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
     _load_step_in_process(session, process_id, step_id)
 
     resource = StepResource(
@@ -311,10 +459,15 @@ def delete_step_resource(
     process_id: UUID,
     step_id: UUID,
     resource_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> None:
     """Remove um recurso. Tripla validacao: process editavel, step no process,
     resource no step."""
-    _ensure_process_editable(session, process_id)
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
     _load_step_in_process(session, process_id, step_id)
     resource = _load_resource_in_step(session, step_id, resource_id)
 
@@ -322,20 +475,27 @@ def delete_step_resource(
     session.commit()
 
 
-# ---------- Fluxo de aprovacao (B-18) ----------
+# ---------- Fluxo de aprovacao ----------
 #
 # Transicoes permitidas:
-#   DRAFT -> IN_REVIEW    (submit_for_review)
-#   IN_REVIEW -> PUBLISHED (approve_process)
+#   DRAFT     -> IN_REVIEW   (submit_for_review)   — autor ou admin
+#   IN_REVIEW -> DRAFT       (withdraw_from_review) — autor ou admin
+#   IN_REVIEW -> PUBLISHED   (approve_process)      — admin
 #
-# ARCHIVED e terminal e alcancado via archive_process. Nao ha "voltar" —
-# se um admin mandou pra review por engano, precisa aprovar e depois editar
-# (ou aguardar uma feature futura de "retornar para rascunho").
+# ARCHIVED e terminal e alcancado via archive_process (admin amplo, autor
+# restrito a DRAFT/IN_REVIEW proprios).
 
 
-def submit_for_review(session: Session, process_id: UUID) -> Process:
-    """DRAFT -> IN_REVIEW. Qualquer outro estado atual e 409."""
+def submit_for_review(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
+    """DRAFT -> IN_REVIEW. Owner ou admin. Outro estado e 409."""
     process = get_process_admin(session, process_id)
+    _assert_owner_or_admin(process, requester_id, requester_role)
 
     if process.status != ProcessStatus.DRAFT:
         raise ConflictError(
@@ -348,6 +508,42 @@ def submit_for_review(session: Session, process_id: UUID) -> Process:
         )
 
     process.status = ProcessStatus.IN_REVIEW
+    process.updated_at = datetime.now(timezone.utc)
+    session.add(process)
+    session.commit()
+    session.refresh(process)
+    return process
+
+
+def withdraw_from_review(
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> Process:
+    """IN_REVIEW -> DRAFT. Owner ou admin.
+
+    Endpoint criado para suportar o fluxo "autor edita processo em revisao":
+    como PATCH em IN_REVIEW e bloqueado, o autor primeiro retira do review,
+    edita, e re-submete. Admin tambem pode retirar (devolver pra autor para
+    ajustes), evitando que admins precisem aprovar/arquivar so para
+    "destravar" a edicao.
+    """
+    process = get_process_admin(session, process_id)
+    _assert_owner_or_admin(process, requester_id, requester_role)
+
+    if process.status != ProcessStatus.IN_REVIEW:
+        raise ConflictError(
+            "Apenas processos em revisao podem voltar para rascunho.",
+            code="INVALID_STATE_TRANSITION",
+            details={
+                "current_status": process.status.value,
+                "required_status": ProcessStatus.IN_REVIEW.value,
+            },
+        )
+
+    process.status = ProcessStatus.DRAFT
     process.updated_at = datetime.now(timezone.utc)
     session.add(process)
     session.commit()
@@ -489,7 +685,11 @@ def get_process_public_detail(
 
 
 def get_process_full_flow(
-    session: Session, process_id: UUID, require_published: bool = True
+    session: Session,
+    process_id: UUID,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
 ) -> Process:
     """Retorna um Process com steps, sectors e resources carregados.
 
@@ -498,14 +698,15 @@ def get_process_full_flow(
     dos steps. Sem eager loading, iterar `process.steps[n].resources` no
     router dispararia 2*N queries adicionais.
 
-    Filtra por PUBLISHED por padrao pra dar o mesmo 404
-    uniforme que o detail publico. Se `require_published=False`, permite admins
-    verem fluxos de processos DRAFT/IN_REVIEW/ARCHIVED.
+    Regra de acesso:
+    - Processos PUBLISHED sao visiveis a qualquer usuario autenticado.
+    - Processos nao publicados (DRAFT/IN_REVIEW/ARCHIVED) so sao visiveis
+      ao autor ou a admins.
+
+    Para terceiros, o comportamento continua sendo 404 uniforme para nao
+    vazar existencia de fluxos ainda nao publicados.
     """
     statement = select(Process).where(Process.id == process_id)
-
-    if require_published:
-        statement = statement.where(Process.status == ProcessStatus.PUBLISHED)
 
     statement = statement.options(
         selectinload(Process.steps).selectinload(FlowStep.sector),  # type: ignore[attr-defined]
@@ -517,4 +718,14 @@ def get_process_full_flow(
             "Processo nao encontrado.",
             code="PROCESS_NOT_FOUND",
         )
-    return process
+
+    if process.status == ProcessStatus.PUBLISHED:
+        return process
+
+    if process.created_by == requester_id or _is_admin(requester_role):
+        return process
+
+    raise NotFoundError(
+        "Processo nao encontrado.",
+        code="PROCESS_NOT_FOUND",
+    )

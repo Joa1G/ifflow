@@ -120,7 +120,7 @@ describe("<Header />", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("com user USER: mostra dropdown com nome e email, sem links admin", async () => {
+  it("com user USER: mostra dropdown com nome, email e atalhos de processo, sem links admin", async () => {
     const user = userEvent.setup();
     setUser(baseUser);
     renderHeader();
@@ -133,6 +133,13 @@ describe("<Header />", () => {
 
     expect(await screen.findByText(baseUser.name)).toBeInTheDocument();
     expect(screen.getByText(baseUser.email)).toBeInTheDocument();
+
+    // `DropdownMenuItem asChild` faz o próprio menuitem virar o <a>.
+    const criar = screen.getByRole("menuitem", { name: /Criar processo/i });
+    expect(criar).toHaveAttribute("href", "/processes/new");
+    const meus = screen.getByRole("menuitem", { name: /Meus processos/i });
+    expect(meus).toHaveAttribute("href", "/processes/mine");
+
     expect(screen.getByRole("menuitem", { name: /Sair/i })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Usuários pendentes/i }),
@@ -145,7 +152,7 @@ describe("<Header />", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("com user ADMIN: mostra links admin mas não Gerenciar papéis", async () => {
+  it("com user ADMIN: mostra links admin + atalhos de processo, mas não Gerenciar papéis", async () => {
     const user = userEvent.setup();
     setUser({ ...baseUser, role: "ADMIN" });
     renderHeader();
@@ -157,6 +164,13 @@ describe("<Header />", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: /Usuários pendentes/i }),
+    ).toBeInTheDocument();
+    // Atalhos comuns continuam visíveis para admin.
+    expect(
+      screen.getByRole("menuitem", { name: /Criar processo/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Meus processos/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Gerenciar papéis/i }),

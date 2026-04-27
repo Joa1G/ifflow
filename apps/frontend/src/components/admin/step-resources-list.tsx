@@ -1,7 +1,7 @@
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useDeleteResource } from "../../hooks/use-admin-processes";
+import { useDeleteResource } from "../../hooks/use-processes-management";
 import type { components } from "../../types/api";
 import {
   AlertDialog,

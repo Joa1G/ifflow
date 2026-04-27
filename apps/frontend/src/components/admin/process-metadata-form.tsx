@@ -21,12 +21,18 @@ import { Textarea } from "../ui/textarea";
 import { RequirementsListInput } from "./requirements-list-input";
 
 interface ProcessMetadataFormProps {
-  /** Valores iniciais — em modo edit, vêm do GET /admin/processes/:id. */
+  /** Valores iniciais — em modo edit, vêm do GET /processes/:id/management. */
   defaultValues?: ProcessMetadataInput;
   onSubmit: (values: ProcessMetadataInput) => Promise<unknown>;
   isPending?: boolean;
   /** Texto do botão primário ("Criar processo" no /new, "Salvar metadados" no /edit). */
   submitLabel: string;
+  /**
+   * Quando `true`, todos os campos viram read-only e o botão de submit some.
+   * Usado no editor para travar processos fora de DRAFT (IN_REVIEW exige
+   * withdraw; PUBLISHED/ARCHIVED não são editáveis).
+   */
+  disabled?: boolean;
 }
 
 const EMPTY_DEFAULTS: ProcessMetadataInput = {
@@ -51,6 +57,7 @@ export function ProcessMetadataForm({
   onSubmit,
   isPending = false,
   submitLabel,
+  disabled = false,
 }: ProcessMetadataFormProps) {
   const form = useForm<ProcessMetadataInput>({
     resolver: zodResolver(processMetadataSchema),
@@ -68,6 +75,13 @@ export function ProcessMetadataForm({
         aria-label="Formulário de metadados do processo"
         className="grid gap-6"
       >
+        {/* `<fieldset disabled>` propaga `disabled` para todos os inputs,
+            radios e botões descendentes — evita ter que repetir a flag em
+            cada FormField (incluindo o sub-formulário de requirements). */}
+        <fieldset
+          disabled={disabled}
+          className="grid gap-6 disabled:opacity-70"
+        >
         <FormField
           control={form.control}
           name="title"
@@ -180,20 +194,23 @@ export function ProcessMetadataForm({
         />
 
         <RequirementsListInput />
+        </fieldset>
 
-        <div className="flex items-center justify-between gap-4 border-t border-ifflow-rule pt-5">
-          <p className="text-xs text-ifflow-muted">
-            {defaultValues && !isDirty
-              ? "Sem mudanças não salvas."
-              : "Mudanças não salvas serão perdidas ao sair."}
-          </p>
-          <Button type="submit" disabled={!submittable}>
-            {isPending ? (
-              <Loader2 aria-hidden className="mr-2 h-4 w-4 animate-spin" />
-            ) : null}
-            {submitLabel}
-          </Button>
-        </div>
+        {disabled ? null : (
+          <div className="flex items-center justify-between gap-4 border-t border-ifflow-rule pt-5">
+            <p className="text-xs text-ifflow-muted">
+              {defaultValues && !isDirty
+                ? "Sem mudanças não salvas."
+                : "Mudanças não salvas serão perdidas ao sair."}
+            </p>
+            <Button type="submit" disabled={!submittable}>
+              {isPending ? (
+                <Loader2 aria-hidden className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {submitLabel}
+            </Button>
+          </div>
+        )}
       </form>
     </FormProvider>
   );
