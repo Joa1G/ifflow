@@ -535,6 +535,85 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     ).toBeInTheDocument();
   });
 
+  it("renderiza /admin/processes/:id/edit (PUBLISHED) → admin edita direto, sem lock (F-27)", async () => {
+    const PID = "77777777-7777-4777-8777-777777777777";
+    server.use(
+      http.get(`${BASE}/processes/${PID}/management`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Processo publicado",
+          short_description: "Curta",
+          full_description: "Completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "PUBLISHED",
+          access_count: 5,
+          created_by: mockSuperAdmin.id,
+          approved_by: mockSuperAdmin.id,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Processo publicado" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/admin/processes/${PID}/edit`);
+    // Form editável → botão de submit aparece (escondido quando disabled).
+    expect(
+      await screen.findByRole("button", { name: /Salvar metadados/i }),
+    ).toBeInTheDocument();
+    // E não há alerta de "Edição bloqueada" para o admin nesse status.
+    expect(screen.queryByText(/Edição bloqueada/i)).not.toBeInTheDocument();
+  });
+
+  it("renderiza /processes/:id/edit (PUBLISHED) owner → mostra lock (CTA Propor edição vem em F-28)", async () => {
+    const PID = "88888888-8888-4888-8888-888888888888";
+    server.use(
+      http.get(`${BASE}/processes/${PID}/management`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Processo publicado do autor",
+          short_description: "Curta",
+          full_description: "Completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "PUBLISHED",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: mockSuperAdmin.id,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Processo publicado do autor" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/processes/${PID}/edit`);
+    expect(
+      await screen.findByText(/Edição bloqueada/i),
+    ).toBeInTheDocument();
+    // Submit não aparece quando disabled.
+    expect(
+      screen.queryByRole("button", { name: /Salvar metadados/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renderiza /processes/:id/flow → ProcessFlowPage (real)", async () => {
     server.use(
       http.get(`${BASE}/processes/abc-123/flow`, () =>

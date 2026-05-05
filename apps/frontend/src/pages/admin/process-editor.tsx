@@ -177,7 +177,9 @@ function EditView({ processId, mode }: EditViewProps) {
   }
 
   const process = adminQuery.data;
-  const editable = process?.status === "DRAFT";
+  const editable =
+    process?.status === "DRAFT" ||
+    (mode === "admin" && process?.status === "PUBLISHED");
   const lockMessage = process ? lockMessageFor(process, mode) : null;
 
   return (
@@ -300,7 +302,11 @@ function lockMessageFor(
         ? "Este processo está em revisão. Para editar, use \"Retirar da revisão\" e o processo voltará para rascunho."
         : "Este processo está aguardando aprovação. Aprove a publicação ou aguarde o autor retirar da revisão para editar.";
     case "PUBLISHED":
-      return "Processo publicado. Para alterar, arquive uma nova versão ou crie um processo separado.";
+      // Admin edita PUBLISHED direto (F-27); owner segue bloqueado até F-28
+      // entregar a CTA "Propor edição".
+      return mode === "admin"
+        ? null
+        : "Processo publicado. Para alterar, arquive uma nova versão ou crie um processo separado.";
     case "ARCHIVED":
       return "Processo arquivado. Apenas leitura.";
     default: {
