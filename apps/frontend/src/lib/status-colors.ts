@@ -12,8 +12,10 @@ type StepStatus = components["schemas"]["StepStatus"];
  */
 export const stepStatusColors: Record<StepStatus, string> = {
   PENDING: "bg-muted text-muted-foreground border-border",
-  IN_PROGRESS: "bg-blue-50 text-blue-900 border-blue-300",
-  COMPLETED: "bg-emerald-50 text-emerald-900 border-emerald-300",
+  IN_PROGRESS:
+    "bg-blue-50 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800",
+  COMPLETED:
+    "bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800",
 };
 
 export const stepStatusLabels: Record<StepStatus, string> = {
