@@ -8,6 +8,15 @@ Relacionamentos:
   as etapas para outro setor.
 - resources (1-N, cascade delete-orphan).
 
+`cloned_from_step_id` (B-30) e um UUID "best-effort" (sem FK constraint)
+populado quando uma etapa e clonada para uma proposta de edicao. No
+approve_process com proposta, o merge usa esse campo pra preservar o id
+original da etapa quando ela ainda existe — assim o progresso pessoal
+(`user_progress.step_statuses` indexado por step_id) sobrevive ao merge.
+Sem FK porque o id apontado pode legitimamente sumir entre clonagem e
+merge (admin nao consegue editar, mas hard-delete via fluxo extremo
+poderia).
+
 Nota sobre o nome `order_index`: o SQL tem `ORDER BY` como palavra reservada.
 Usar `order` como nome de coluna obriga quoting e cria ambiguidade em querys
 — `order_index` deixa explicito que e o indice ordinal da etapa no fluxo.
@@ -42,6 +51,7 @@ class FlowStep(SQLModel, table=True):
         )
     )
     order_index: int = Field(nullable=False)
+    cloned_from_step_id: UUID | None = Field(default=None, nullable=True)
     title: str = Field(max_length=255, nullable=False)
     description: str = Field(sa_column=Column(sa.Text(), nullable=False))
     responsible: str = Field(max_length=255, nullable=False)

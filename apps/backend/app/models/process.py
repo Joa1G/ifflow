@@ -10,6 +10,11 @@ FKs:
   conta admin precisa antes transferir autoria (tratado em task futura).
 - `approved_by` (User, NULLABLE, ON DELETE SET NULL): aprovador pode sumir
   sem invalidar a publicacao — o registro de quem aprovou e informacional.
+- `proposed_change_for` (Process, NULLABLE, ON DELETE CASCADE) (B-30):
+  quando preenchido, indica que este registro e uma PROPOSTA DE EDICAO
+  apontando para o processo PUBLISHED original (ver WIP_PUBLISHED_
+  PROCESS_EDIT.md). Unique partial index na migration garante "uma
+  proposta pendente por original".
 
 `requirements` e um JSON array de strings (ADR-006). `access_count` comeca
 em 0 e so incrementa em GET de detalhe (ADR-008).
@@ -62,6 +67,14 @@ class Process(SQLModel, table=True):
             ForeignKey("users.id", ondelete="SET NULL"),
             nullable=True,
             index=True,
+        ),
+    )
+    proposed_change_for: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            sa.Uuid(),
+            ForeignKey("processes.id", ondelete="CASCADE"),
+            nullable=True,
         ),
     )
     created_at: datetime = Field(

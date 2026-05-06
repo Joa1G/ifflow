@@ -33,8 +33,17 @@ router = APIRouter(prefix="/admin/processes", tags=["admin-processes"])
 _require_admin = require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 
 
-def _to_admin_view(process) -> ProcessAdminView:
-    return ProcessAdminView.model_validate(process, from_attributes=True)
+def _to_admin_view(
+    process, pending_proposal_id: UUID | None = None
+) -> ProcessAdminView:
+    """Process model -> view, com `pending_proposal_id` injetado pelo caller.
+
+    Mesma forma do helper em routers/processes.py — manter as duas
+    versoes alinhadas.
+    """
+    view = ProcessAdminView.model_validate(process, from_attributes=True)
+    view.pending_proposal_id = pending_proposal_id
+    return view
 
 
 @router.get("", response_model=ProcessesManagementListResponse)
@@ -48,8 +57,14 @@ def list_processes(
     processes = process_service.list_processes_admin(
         session, status=status, category=category
     )
+    pending_map = process_service.get_pending_proposal_id_map(
+        session, [p.id for p in processes]
+    )
     return ProcessesManagementListResponse(
-        processes=[_to_admin_view(p) for p in processes],
+        processes=[
+            _to_admin_view(p, pending_proposal_id=pending_map.get(p.id))
+            for p in processes
+        ],
         total=len(processes),
     )
 
@@ -65,4 +80,6 @@ def approve(
     process = process_service.approve_process(
         session, process_id, approver_id=auth.user_id
     )
+    # Apos approve, a proposta foi consumida (no caminho B-30) ou nao
+    # havia proposta apontando pro target — pending_id None em ambos.
     return _to_admin_view(process)

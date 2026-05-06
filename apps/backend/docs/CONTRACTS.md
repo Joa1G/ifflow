@@ -46,6 +46,9 @@ O FastAPI gera o OpenAPI automaticamente em `/openapi.json` e uma UI em `/docs`.
 | `PROCESS_LOCKED_IN_REVIEW` | 409 | Processo em IN_REVIEW — autor precisa fazer `withdraw` antes de editar |
 | `PROCESS_ALREADY_ARCHIVED` | 409 | Tentativa de arquivar processo já ARCHIVED |
 | `INVALID_STATE_TRANSITION` | 409 | Transição de status inválida (ex: aprovar DRAFT direto) |
+| `PROCESS_NOT_PUBLISHED` | 409 | Tentativa de propor edição em processo que não é PUBLISHED |
+| `PROCESS_HAS_PENDING_PROPOSAL` | 409 | Mutação no original bloqueada porque existe proposta de edição em DRAFT/IN_REVIEW (ver B-30). `details.proposal_id` aponta para a proposta |
+| `PROPOSAL_BASE_NOT_PUBLISHED` | 409 | Submit/approve de proposta cuja versão publicada base deixou de estar PUBLISHED |
 | `INVALID_EMAIL_DOMAIN` | 400 | Email não é @ifam.edu.br |
 | `WEAK_PASSWORD` | 400 | Senha não atende requisitos |
 | `RATE_LIMITED` | 429 | Muitas tentativas |
@@ -444,13 +447,25 @@ Lista processos cujo `created_by` é o usuário autenticado. Aceita query params
 Visão completa (`ProcessAdminView`) para o autor ou admin gerenciar o processo. Diferente de `GET /processes/{id}` (público, só PUBLISHED), retorna qualquer status. Permissão: autor ou admin.
 
 ### PATCH /processes/{process_id}
-Edita campos do processo. Bloqueia se status=`ARCHIVED` (409 `PROCESS_NOT_EDITABLE`) ou `IN_REVIEW` (409 `PROCESS_LOCKED_IN_REVIEW` — autor precisa chamar `/withdraw` antes). Permissão: autor ou admin.
+Edita campos do processo. Bloqueia se status=`ARCHIVED` (409 `PROCESS_NOT_EDITABLE`) ou `IN_REVIEW` (409 `PROCESS_LOCKED_IN_REVIEW` — autor precisa chamar `/withdraw` antes). Se o processo for um PUBLISHED com proposta de edição pendente apontando pra ele, bloqueia também com 409 `PROCESS_HAS_PENDING_PROPOSAL` (com `details.proposal_id`). Permissão: autor ou admin.
 
 ### DELETE /processes/{process_id}
-Soft delete → status `ARCHIVED`. Autor pode em DRAFT/IN_REVIEW; admin pode em qualquer status. Autor tentando PUBLISHED recebe 403 `PROCESS_ARCHIVE_REQUIRES_ADMIN`. Já arquivado é 409 `PROCESS_ALREADY_ARCHIVED`.
+Soft delete → status `ARCHIVED`. Autor pode em DRAFT/IN_REVIEW; admin pode em qualquer status. Autor tentando PUBLISHED recebe 403 `PROCESS_ARCHIVE_REQUIRES_ADMIN`. Já arquivado é 409 `PROCESS_ALREADY_ARCHIVED`. Original com proposta pendente é 409 `PROCESS_HAS_PENDING_PROPOSAL` (admin precisa resolver a proposta antes — ver B-30). Arquivar a proposta em si funciona normalmente e libera o slot de unique partial index para nova proposta.
 
 ### POST /processes/{process_id}/submit-for-review (DRAFT → IN_REVIEW)
-Permissão: autor ou admin. Outro estado é 409 `INVALID_STATE_TRANSITION`.
+Permissão: autor ou admin. Outro estado é 409 `INVALID_STATE_TRANSITION`. Se o processo for uma proposta de edição (`proposed_change_for` setado) cuja base não está mais `PUBLISHED`, retorna 409 `PROPOSAL_BASE_NOT_PUBLISHED`.
+
+### POST /processes/{process_id}/propose-edit (PUBLISHED → cria proposta DRAFT)
+Apenas o **autor original** pode chamar — admins editam o publicado direto via `PATCH /processes/{id}`. O backend cria (ou recupera, se já existir) uma proposta DRAFT clonando o processo: `proposed_change_for` aponta para o id do original, e cada step/resource recebe `cloned_from_step_id`/`cloned_from_resource_id` apontando para o item original (insumo do merge ID-preserving no approve).
+
+**Regras:**
+- Original deve estar `PUBLISHED` → 409 `PROCESS_NOT_PUBLISHED` caso contrário.
+- Apenas o autor original (`created_by == requester`) → 403 `PROCESS_NOT_OWNED` para qualquer outro usuário (inclusive admins).
+- Idempotente: a unique partial index em `processes.proposed_change_for` garante no máximo uma proposta pendente (DRAFT/IN_REVIEW) por original. Segunda chamada devolve a mesma proposta com 201.
+
+**Response 201:** `ProcessAdminView` da proposta (status `DRAFT`, com `proposed_change_for` setado).
+
+**Body:** vazio. `requester_id` vem do JWT.
 
 ### POST /processes/{process_id}/withdraw (IN_REVIEW → DRAFT)
 Volta o processo para rascunho para o autor (ou admin) editar. Outro estado é 409. Permissão: autor ou admin.
@@ -469,8 +484,12 @@ Restritos a `ADMIN` ou `SUPER_ADMIN`.
 ### GET /admin/processes
 Lista TODOS os processos (qualquer autor, qualquer status). Aceita filtros `status` e `category`. Único lugar onde admin vê DRAFT/IN_REVIEW de outros autores.
 
-### POST /admin/processes/{process_id}/approve (IN_REVIEW → PUBLISHED)
-Marca como aprovado e seta `approved_by` a partir do JWT. Outro estado é 409. Auto-aprovação (autor == aprovador) é permitida no MVP mas registra `WARNING` no log para auditoria.
+### POST /admin/processes/{process_id}/approve (IN_REVIEW → PUBLISHED **ou** merge de proposta)
+Dois caminhos:
+
+1. **Aprovação comum** (target sem `proposed_change_for`): IN_REVIEW → PUBLISHED. Seta `approved_by` a partir do JWT. Outro estado é 409 `INVALID_STATE_TRANSITION`. Auto-aprovação (autor == aprovador) é permitida no MVP mas registra `WARNING` no log para auditoria.
+
+2. **Aprovação de proposta** (target com `proposed_change_for` setado): aplica o **merge ID-preserving** (decisão 5B) no original — steps/resources com `cloned_from_*` apontando pra itens ainda existentes recebem update in-place (preserva id, progresso pessoal não reseta); itens novos da proposta viram inserts; itens do original sem correspondência viram delete. Em seguida, hard-deleta a proposta e atualiza `approved_by`/`updated_at` no original. **Resposta retorna o ORIGINAL atualizado**, não a proposta. Defesa em profundidade: se o original deixou de ser `PUBLISHED` entre criação e approve, retorna 409 `PROPOSAL_BASE_NOT_PUBLISHED`.
 
 ## Notas sobre o fluxo de aprovação de processos
 
@@ -479,3 +498,18 @@ Marca como aprovado e seta `approved_by` a partir do JWT. Outro estado é 409. A
 - Em `IN_REVIEW`, edição direta é bloqueada — autor (ou admin) chama `POST /processes/{id}/withdraw` para voltar a `DRAFT`, edita, e re-submete.
 - Admin aprova → `PUBLISHED` (`POST /admin/processes/{id}/approve`). Auto-aprovação permitida no MVP, mas com log de auditoria.
 - Arquivamento (`ARCHIVED`) é terminal e esconde o processo da listagem pública (mas preserva o progresso dos usuários). Autor pode arquivar próprio DRAFT/IN_REVIEW; só admin arquiva PUBLISHED.
+
+## Edição de processos PUBLISHED — proposta de edição (B-30)
+
+Decisões fechadas em `WIP_PUBLISHED_PROCESS_EDIT.md`:
+
+1. **Admin edita direto**: `PATCH /processes/{id}` em PUBLISHED é aplicado direto pelo backend (a UI destrava em F-27).
+2. **Autor passa por proposta**: o autor original chama `POST /processes/{id}/propose-edit` que cria uma **sombra-draft** — um clone DRAFT com FK `proposed_change_for` apontando pro original. O autor edita a proposta como qualquer DRAFT (steps, resources, metadados), submete (`/submit-for-review`), e o admin aprova (merge no original) ou rejeita (arquiva a proposta).
+3. **Workflow linear**: enquanto há proposta pendente (DRAFT/IN_REVIEW) apontando pro original, mutações no original (PATCH, DELETE, step/resource CRUD) retornam 409 `PROCESS_HAS_PENDING_PROPOSAL` com `details.proposal_id`. Admin precisa resolver a proposta antes (aprovar = merge, ou rejeitar via DELETE da proposta).
+4. **No máximo uma proposta pendente por original**: garantido por unique partial index (`WHERE proposed_change_for IS NOT NULL`). Segunda chamada de `/propose-edit` devolve idempotente a mesma proposta. Arquivar a proposta limpa `proposed_change_for` e libera o slot.
+5. **Merge ID-preserving (decisão 5B)**: steps clonados levam `cloned_from_step_id` apontando pra etapa do original. No approve, o backend usa esse campo pra decidir update in-place (preserva id, progresso pessoal `user_progress.step_statuses[step_id]` continua válido) vs insert (steps novos da proposta) vs delete (steps que sumiram da proposta). Mesma lógica para resources via `cloned_from_resource_id`.
+6. **Defesa em profundidade**: o `submit-for-review` da proposta valida que o original ainda está PUBLISHED; o approve também (PROPOSAL_BASE_NOT_PUBLISHED). Caso contrário a proposta seria órfã.
+
+`ProcessAdminView` expõe dois campos derivados desse fluxo:
+- `proposed_change_for: UUID | null` — quando preenchido, este registro É uma proposta de edição apontando pro original.
+- `pending_proposal_id: UUID | null` — campo computado (não existe no model). Quando preenchido, indica que existe uma proposta pendente apontando pra ESTE registro. Use para renderizar banner no editor admin do original ("Resolva a proposta pendente antes de editar").

@@ -96,8 +96,14 @@ def list_my_processes(
         status=status_filter,
         category=category,
     )
+    pending_map = process_service.get_pending_proposal_id_map(
+        session, [p.id for p in processes]
+    )
     return ProcessesManagementListResponse(
-        processes=[_to_admin_view(p) for p in processes],
+        processes=[
+            _to_admin_view(p, pending_proposal_id=pending_map.get(p.id))
+            for p in processes
+        ],
         total=len(processes),
     )
 
@@ -189,9 +195,19 @@ def get_process_flow(
 # router so encaminha auth.user_id e auth.role.
 
 
-def _to_admin_view(process) -> ProcessAdminView:
-    """Process model -> ProcessAdminView. Campos batem 1:1."""
-    return ProcessAdminView.model_validate(process, from_attributes=True)
+def _to_admin_view(
+    process, pending_proposal_id: UUID | None = None
+) -> ProcessAdminView:
+    """Process model -> ProcessAdminView.
+
+    Campos do model batem 1:1 (incluindo `proposed_change_for`).
+    `pending_proposal_id` e computado em separado pelo caller (single ou
+    batched) e injetado aqui — fora do model_validate porque nao e atributo
+    do model.
+    """
+    view = ProcessAdminView.model_validate(process, from_attributes=True)
+    view.pending_proposal_id = pending_proposal_id
+    return view
 
 
 def _step_to_view(step) -> FlowStepAdminView:
@@ -225,6 +241,8 @@ def create_process(
 ) -> ProcessAdminView:
     # created_by sempre do JWT — o cliente nao tem como mandar outro valor.
     process = process_service.create_process(session, data, created_by=auth.user_id)
+    # Processo recem-criado nao tem proposta apontando pra ele — pending_id
+    # default None evita a query.
     return _to_admin_view(process)
 
 
@@ -250,7 +268,8 @@ def get_process_management(
         requester_id=auth.user_id,
         requester_role=auth.role,
     )
-    return _to_admin_view(process)
+    pending_id = process_service.get_pending_proposal_id(session, process.id)
+    return _to_admin_view(process, pending_proposal_id=pending_id)
 
 
 @router.patch("/{process_id}", response_model=ProcessAdminView)
@@ -267,6 +286,8 @@ def update_process(
         requester_id=auth.user_id,
         requester_role=auth.role,
     )
+    # Apos update bem-sucedido, nenhuma proposta pendente aponta pro
+    # processo (o assert no service ja garantiu isso). Pending_id None.
     return _to_admin_view(process)
 
 
@@ -285,6 +306,31 @@ def archive_process(
         requester_role=auth.role,
     )
     return _to_admin_view(process)
+
+
+@router.post(
+    "/{process_id}/propose-edit",
+    response_model=ProcessAdminView,
+    status_code=status.HTTP_201_CREATED,
+)
+def propose_edit(
+    process_id: UUID,
+    auth: TokenPayload = Depends(get_current_user_payload),
+    session: Session = Depends(get_session),
+) -> ProcessAdminView:
+    """Cria (ou retorna a existente) proposta de edicao para um PUBLISHED.
+
+    `requester_id` vem do JWT — endpoint nao aceita body. Resposta 201 com
+    a proposta (DRAFT, com `proposed_change_for` apontando pro original).
+    Em chamada idempotente, ainda devolve 201 com a proposta pre-existente
+    — o frontend trata isso normalmente (navegacao para /edit/{proposalId}).
+    """
+    proposal = process_service.start_edit_proposal(
+        session, process_id, requester_id=auth.user_id
+    )
+    # Proposta nao tem proposta apontando pra ela (unique partial index +
+    # invariant), entao pending_id e sempre None aqui.
+    return _to_admin_view(proposal)
 
 
 # ---------- FlowStep CRUD (autor ou admin) ----------
@@ -414,6 +460,8 @@ def submit_for_review(
         requester_id=auth.user_id,
         requester_role=auth.role,
     )
+    # Submit muda DRAFT->IN_REVIEW; pode ser uma proposta. Em ambos os
+    # casos, ninguem aponta pra ela — pending_id None.
     return _to_admin_view(process)
 
 

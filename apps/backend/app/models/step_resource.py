@@ -6,6 +6,11 @@ curtos inline (ex: excerto de lei), enquanto `url` aponta para algo externo
 so com url e um LEGAL_BASIS so com content.
 
 FK step_id com ON DELETE CASCADE — recurso orfao nao faz sentido.
+
+`cloned_from_resource_id` (B-30): mesmo papel de FlowStep.cloned_from_step_id
+— "best-effort" sem FK, populado quando o resource e clonado para uma
+proposta. Permite o merge ID-preserving dos resources dentro de uma etapa
+preservada.
 """
 
 from datetime import datetime, timezone
@@ -31,6 +36,7 @@ class StepResource(SQLModel, table=True):
         )
     )
     type: ResourceType = Field(nullable=False)
+    cloned_from_resource_id: UUID | None = Field(default=None, nullable=True)
     title: str = Field(max_length=255, nullable=False)
     url: str | None = Field(default=None, max_length=2048, nullable=True)
     content: str | None = Field(

@@ -66,6 +66,16 @@ class ProcessAdminView(BaseModel):
     ja referencia esse type. Hoje tambem e usado pelo dono nao-admin em
     /processes/mine e /processes/{id}/management — a "visao admin" virou "visao
     de quem tem permissao para gerenciar o processo".
+
+    Campos de proposta de edicao (B-30):
+    - `proposed_change_for`: quando preenchido, este registro E uma proposta
+      de edicao apontando para o id do processo PUBLISHED original. Frontend
+      usa pra renderizar banner "Esta e uma proposta de edicao".
+    - `pending_proposal_id`: campo COMPUTADO (nao existe no model, calculado
+      no service). Quando preenchido, indica que existe uma proposta pendente
+      (DRAFT ou IN_REVIEW) apontando para ESTE processo. Frontend usa pra
+      renderizar banner no admin do original ("Resolva a proposta pendente
+      antes de editar"). Evita um round-trip extra para descobrir isso.
     """
 
     id: UUID
@@ -79,6 +89,8 @@ class ProcessAdminView(BaseModel):
     access_count: int
     created_by: UUID
     approved_by: UUID | None
+    proposed_change_for: UUID | None = None
+    pending_proposal_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
