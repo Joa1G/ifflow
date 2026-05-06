@@ -726,6 +726,64 @@ REQ mapeados: REQ-040, REQ-041, REQ-044
 
 ---
 
+### F-27 — Admin destrava PUBLISHED no editor (milestone 2.1)
+Status: TODO
+Depende de: F-22
+Requires backend: —
+REQ mapeados: REQ-041, REQ-044
+
+**Objetivo:** Admin pode editar metadados, etapas e recursos de um processo já PUBLISHED direto pelo editor, sem precisar passar por arquivar/restaurar. O backend (B-15/B-17) já permite — apenas o frontend trava o editor em PUBLISHED para todos os modos. Para o servidor autor (mode=owner) o bloqueio continua até F-28 entregar o fluxo de "Propor edição".
+
+**Critério de pronto:**
+- [ ] Em `src/pages/admin/process-editor.tsx`, `editable` vale `true` quando `status === "DRAFT"` OU (`mode === "admin"` E `status === "PUBLISHED"`).
+- [ ] `lockMessageFor` retorna `null` no caso PUBLISHED quando `mode === "admin"` (preserva texto de bloqueio para owner).
+- [ ] Não há mudança de comportamento em DRAFT, IN_REVIEW e ARCHIVED.
+- [ ] Sem mudança em hooks, schemas ou rotas — a lógica de autorização já é do backend.
+
+**Arquivos permitidos:** `src/pages/admin/process-editor.tsx`, `src/__tests__/app.test.tsx`
+
+**Testes obrigatórios:**
+- `app.test.tsx`: admin abre `/admin/processes/:id/edit` de PUBLISHED → o formulário de metadados está habilitado e não há alerta "Edição bloqueada".
+- `app.test.tsx`: owner abre `/processes/:id/edit` de PUBLISHED → mostra alerta de bloqueio (comportamento atual preservado).
+
+**Checklist de segurança:**
+- [ ] Rota `/admin/*` continua protegida por `<ProtectedRoute requiredRole="ADMIN">` (sem mudança).
+- [ ] Backend é a fonte da verdade da autorização — frontend apenas alinha o que o usuário pode fazer com o que o backend permite (REQ inegociável: nunca confie só no frontend).
+
+---
+
+### F-28 — Fluxo de proposta de edição do USER autor (milestone 2.2)
+Status: TODO
+Depende de: F-22, F-27
+Requires backend: B-30
+REQ mapeados: REQ-041, REQ-044
+
+**Objetivo:** USER autor de processo PUBLISHED pode "Propor edição" — o backend cria uma proposta DRAFT (sombra-draft com FK `proposed_change_for`). O autor edita e submete; o admin aprova (merge ID-preserving — progresso pessoal preservado) ou rejeita (arquiva a proposta). Enquanto há proposta pendente, admin é bloqueado de editar/arquivar o original (409 `PROCESS_HAS_PENDING_PROPOSAL`) — frontend trata o erro com toast + ação "Ver proposta".
+
+**Critério de pronto:**
+- [ ] `./scripts/sync-api-types.sh` rodado, `src/types/api.ts` regenerado com `POST /processes/{id}/propose-edit`, campos `proposed_change_for` e `pending_proposal_id` em `ProcessAdminView`, código de erro `PROCESS_HAS_PENDING_PROPOSAL` e `PROPOSAL_BASE_NOT_PUBLISHED`.
+- [ ] Hook novo `useProposeEdit(processId)` em `src/hooks/use-processes-management.ts` que chama o endpoint e invalida caches relevantes.
+- [ ] Em `src/pages/admin/process-editor.tsx`: botão "Propor edição" quando `mode === "owner" && status === "PUBLISHED"`. Click → POST `/propose-edit` → navega para `/processes/{proposalId}/edit`.
+- [ ] Banner no editor da proposta (`process.proposed_change_for !== null`): "Esta é uma proposta de edição. Ao submeter, um administrador analisará."
+- [ ] Banner no editor admin do original com proposta pendente (`process.pending_proposal_id !== null`): "Existe proposta de edição em revisão. Resolva-a antes de editar." + link "Ver proposta".
+- [ ] Tratamento de 409 `PROCESS_HAS_PENDING_PROPOSAL` em `useUpdateProcess` e `useArchiveProcess`: toast com mensagem do backend + ação "Ver proposta" usando `error.details.proposal_id`.
+- [ ] Botão "Rejeitar proposta" no editor de uma proposta pendente em mode=admin — wrapper em `useArchiveProcess` (proposta vai para ARCHIVED).
+- [ ] Lista admin (`admin-processes-table`): badge "Proposta de edição" quando `proposed_change_for !== null`.
+
+**Arquivos permitidos:** `src/pages/admin/process-editor.tsx`, `src/components/admin/*`, `src/hooks/use-processes-management.ts`, `src/types/api.ts` (gerado), e os testes correspondentes.
+
+**Testes obrigatórios:**
+- `use-processes-management.test.tsx`: `useProposeEdit` faz POST correto, sucesso navega/invalida, erro de não-autor (403) propaga `error.code`.
+- `app.test.tsx`: owner em PUBLISHED vê botão "Propor edição"; admin em PUBLISHED com proposta pendente vê banner + link.
+- Tratamento de 409 `PROCESS_HAS_PENDING_PROPOSAL` no save de metadados (toast + ação).
+
+**Checklist de segurança:**
+- [ ] Backend é fonte da verdade — botões aparecem por estado, mas se o user clicar fora de cenário válido, o backend retorna 4xx (testar manualmente também).
+- [ ] Nunca enviar `created_by`/`approved_by`/`status` no body do propose-edit — só o id do path importa.
+- [ ] Tratar 401/403 com fluxo padrão do `api-client` (sem expor detalhes do backend).
+
+---
+
 ### F-23 — Lista de processos admin (todos os status)
 Status: TODO
 Depende de: F-22
@@ -846,9 +904,9 @@ F-00 → F-01 → F-02 → F-03 → F-04
                                    ↓
                             F-19 → F-20 → F-21
                                    ↓
-                     F-22 → F-23 → F-24
-                            ↓
-                            F-25 → F-26
+                     F-22 → F-27 → F-28 → F-23 → F-24
+                                          ↓
+                                          F-25 → F-26
 ```
 
 ## Tasks paralelizáveis
@@ -856,4 +914,4 @@ F-00 → F-01 → F-02 → F-03 → F-04
 - **Sprint 0**: F-00 sozinho, depois F-01 → F-02 → F-03 → F-04 em sequência (ou F-03 e F-04 em paralelo depois de F-02)
 - **Sprint 1**: F-08 em paralelo com F-05 → F-06; F-09, F-10, F-11 em paralelo depois que F-08 estiver pronto
 - **Sprint 3**: F-15, F-16, F-17, F-18 em sequência (cada um depende do anterior)
-- **Sprint 5**: F-22, F-23, F-24 podem ser em paralelo depois de F-13
+- **Sprint 5**: F-22 → F-27 (curta, frontend-only) → F-28 (gated por B-30) é cadeia; F-23 e F-24 em paralelo depois

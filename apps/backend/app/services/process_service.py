@@ -48,6 +48,11 @@ from app.schemas.process import (
 logger = logging.getLogger(__name__)
 
 
+# Statuses que contam como "proposta pendente" (bloqueia mutacoes no original
+# pela decisao 6A). ARCHIVED e PUBLISHED nao contam — o slot fica liberado.
+_PENDING_PROPOSAL_STATUSES = (ProcessStatus.DRAFT, ProcessStatus.IN_REVIEW)
+
+
 # ---------- Helpers de autorizacao ----------
 #
 # USER comum agora cria/edita seus proprios processos. Admin segue podendo
@@ -94,6 +99,71 @@ def _assert_editable_status(process: Process) -> None:
             code="PROCESS_LOCKED_IN_REVIEW",
             details={"current_status": process.status.value},
         )
+
+
+# ---------- Proposta de edicao: helpers de leitura (B-30) ----------
+#
+# `pending_proposal_id` e um campo computado em ProcessAdminView — nao existe
+# no model, e calculado a partir de uma subquery em `processes` apontando de
+# volta para o original (proposed_change_for == original.id) com status
+# pendente. Centralizar as duas formas de leitura (single e batch) aqui evita
+# N+1 nos endpoints de listagem.
+
+
+def get_pending_proposal_id(session: Session, process_id: UUID) -> UUID | None:
+    """Id da proposta pendente apontando para `process_id`, ou None.
+
+    "Pendente" = DRAFT ou IN_REVIEW. ARCHIVED e PUBLISHED nao contam: a
+    primeira porque ja foi rejeitada/limpa, a segunda porque uma proposta
+    nao chega a virar PUBLISHED (o approve consome a proposta e atualiza o
+    original — ver `approve_process`).
+
+    O unique partial index garante no maximo um resultado.
+    """
+    statement = select(Process.id).where(
+        Process.proposed_change_for == process_id,
+        Process.status.in_(_PENDING_PROPOSAL_STATUSES),  # type: ignore[attr-defined]
+    )
+    return session.exec(statement).one_or_none()
+
+
+def get_pending_proposal_id_map(
+    session: Session, process_ids: list[UUID]
+) -> dict[UUID, UUID]:
+    """Versao batch para listagens — `{original_id: proposal_id}`.
+
+    Uma unica query para todos os ids, evitando N+1 em GET /admin/processes
+    e GET /processes/mine. Ids sem proposta pendente nao aparecem no dict —
+    o caller checa com `.get(pid)` e ja recebe None.
+    """
+    if not process_ids:
+        return {}
+    statement = select(Process.id, Process.proposed_change_for).where(
+        Process.proposed_change_for.in_(process_ids),  # type: ignore[attr-defined]
+        Process.status.in_(_PENDING_PROPOSAL_STATUSES),  # type: ignore[attr-defined]
+    )
+    rows = session.exec(statement).all()
+    return {original_id: proposal_id for proposal_id, original_id in rows}
+
+
+def _assert_no_pending_proposal(session: Session, process: Process) -> None:
+    """Bloqueia update/archive do ORIGINAL com proposta pendente (decisao 6A).
+
+    Workflow linear: admin precisa aprovar (merge) ou rejeitar (arquivar a
+    proposta) antes de tocar no original. O check usa o id do processo
+    passado — para uma proposta (ela tambem chama isso indiretamente via
+    `_ensure_process_editable`), nao ha proposta apontando pra ela, entao
+    passa direto.
+    """
+    proposal_id = get_pending_proposal_id(session, process.id)
+    if proposal_id is None:
+        return
+    raise ConflictError(
+        "Existe uma proposta de edicao pendente para este processo. "
+        "Aprove ou rejeite-a antes de continuar.",
+        code="PROCESS_HAS_PENDING_PROPOSAL",
+        details={"proposal_id": str(proposal_id)},
+    )
 
 
 def create_process(
@@ -216,6 +286,7 @@ def update_process(
     process = get_process_admin(session, process_id)
     _assert_owner_or_admin(process, requester_id, requester_role)
     _assert_editable_status(process)
+    _assert_no_pending_proposal(session, process)
 
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -263,8 +334,18 @@ def archive_process(
             details={"current_status": process.status.value},
         )
 
+    # Bloqueia archive do ORIGINAL com proposta pendente (decisao 6A). Nao
+    # afeta archive da PROPOSTA (rejeicao via /processes/{proposalId}) — ela
+    # nao tem nenhuma proposta apontando pra ela.
+    _assert_no_pending_proposal(session, process)
+
     process.status = ProcessStatus.ARCHIVED
     process.updated_at = datetime.now(timezone.utc)
+    # Se estamos arquivando uma PROPOSTA (rejeicao), liberamos o slot do
+    # unique partial index — `proposed_change_for` volta a NULL para que o
+    # autor possa propor uma nova edicao mais tarde.
+    if process.proposed_change_for is not None:
+        process.proposed_change_for = None
     session.add(process)
     session.commit()
     session.refresh(process)
@@ -287,6 +368,7 @@ def _ensure_process_editable(
       1. processo existe (404 PROCESS_NOT_FOUND)
       2. requester e dono OU admin (403 PROCESS_NOT_OWNED)
       3. status permite edicao — nem ARCHIVED nem IN_REVIEW (409)
+      4. nao ha proposta de edicao pendente apontando pra ele (decisao 6A)
 
     A ordem importa: ownership antes de status para nao vazar a existencia
     de um DRAFT alheio via mensagem "PROCESS_LOCKED_IN_REVIEW".
@@ -294,6 +376,7 @@ def _ensure_process_editable(
     process = get_process_admin(session, process_id)
     _assert_owner_or_admin(process, requester_id, requester_role)
     _assert_editable_status(process)
+    _assert_no_pending_proposal(session, process)
     return process
 
 
@@ -493,7 +576,12 @@ def submit_for_review(
     requester_id: UUID,
     requester_role: UserRole,
 ) -> Process:
-    """DRAFT -> IN_REVIEW. Owner ou admin. Outro estado e 409."""
+    """DRAFT -> IN_REVIEW. Owner ou admin. Outro estado e 409.
+
+    Para uma PROPOSTA de edicao (proposed_change_for set), tambem valida
+    que o original ainda esta PUBLISHED — submeter uma proposta cuja base
+    foi arquivada nao faz sentido e ia explodir no approve depois.
+    """
     process = get_process_admin(session, process_id)
     _assert_owner_or_admin(process, requester_id, requester_role)
 
@@ -506,6 +594,20 @@ def submit_for_review(
                 "required_status": ProcessStatus.DRAFT.value,
             },
         )
+
+    if process.proposed_change_for is not None:
+        original = session.get(Process, process.proposed_change_for)
+        if original is None or original.status != ProcessStatus.PUBLISHED:
+            raise ConflictError(
+                "A versao publicada deste processo nao esta mais ativa. "
+                "Esta proposta nao pode ser submetida.",
+                code="PROPOSAL_BASE_NOT_PUBLISHED",
+                details={
+                    "current_status": (
+                        original.status.value if original is not None else None
+                    ),
+                },
+            )
 
     process.status = ProcessStatus.IN_REVIEW
     process.updated_at = datetime.now(timezone.utc)
@@ -554,44 +656,413 @@ def withdraw_from_review(
 def approve_process(
     session: Session, process_id: UUID, *, approver_id: UUID
 ) -> Process:
-    """IN_REVIEW -> PUBLISHED. Seta approved_by a partir do JWT.
+    """IN_REVIEW -> PUBLISHED, OU merge de proposta de edicao no original.
+
+    Dois caminhos:
+
+    1. Caminho legado: target e um processo "comum" (sem proposed_change_for).
+       Aplica a transicao IN_REVIEW -> PUBLISHED, seta approved_by, retorna o
+       proprio target atualizado.
+
+    2. Caminho B-30: target e uma PROPOSTA (proposed_change_for set). Carrega
+       o original, faz o merge ID-preserving (ver _apply_proposal_merge),
+       hard-deleta a proposta, atualiza approved_by/updated_at do original,
+       e retorna o ORIGINAL — que continua PUBLISHED. A proposta some.
 
     `approver_id` e sempre o do usuario autenticado, NUNCA do body — o router
     passa `auth.user_id`.
 
     No MVP, um admin pode aprovar o proprio processo (decisao da equipe — ver
-    CONTRACTS.md). Registramos em log INFO quando isso acontece para servir
+    CONTRACTS.md). Registramos em log WARNING quando isso acontece para servir
     de trilha de auditoria ate termos logging estruturado (B-27).
     """
-    process = get_process_admin(session, process_id)
+    target = get_process_admin(session, process_id)
 
-    if process.status != ProcessStatus.IN_REVIEW:
+    if target.status != ProcessStatus.IN_REVIEW:
         raise ConflictError(
             "Apenas processos em IN_REVIEW podem ser aprovados.",
             code="INVALID_STATE_TRANSITION",
             details={
-                "current_status": process.status.value,
+                "current_status": target.status.value,
                 "required_status": ProcessStatus.IN_REVIEW.value,
             },
         )
 
-    process.status = ProcessStatus.PUBLISHED
-    process.approved_by = approver_id
-    process.updated_at = datetime.now(timezone.utc)
-    session.add(process)
-    session.commit()
-    session.refresh(process)
+    if target.proposed_change_for is not None:
+        # Caminho B-30: aprovar uma proposta = merge no original.
+        return _approve_proposal(session, target, approver_id=approver_id)
 
-    if approver_id == process.created_by:
+    target.status = ProcessStatus.PUBLISHED
+    target.approved_by = approver_id
+    target.updated_at = datetime.now(timezone.utc)
+    session.add(target)
+    session.commit()
+    session.refresh(target)
+
+    if approver_id == target.created_by:
         # Auto-aprovacao permitida no MVP mas registrada. B-27 vai transformar
         # isso em evento estruturado persistido.
         logger.warning(
             "process_self_approval process_id=%s approver=%s",
-            process.id,
+            target.id,
             approver_id,
         )
 
-    return process
+    return target
+
+
+def _approve_proposal(
+    session: Session, proposal: Process, *, approver_id: UUID
+) -> Process:
+    """Aprovacao de proposta de edicao (B-30). Mantem o id do original.
+
+    Sequencia:
+    1. Carrega original com steps + resources via selectinload (sem N+1).
+    2. Defesa em profundidade: original tem que estar PUBLISHED. A decisao
+       6A bloqueia archive do original com proposta pendente, mas se algo
+       furar (e.g. delete_process_permanently nao bloqueia hoje), ainda
+       falhamos cedo aqui em vez de apagar o progresso silenciosamente.
+    3. Carrega proposta com steps + resources tambem via selectinload — vamos
+       iterar sobre eles antes de hard-deletar a proposta.
+    4. Merge ID-preserving (ver _apply_proposal_merge): updates, deletes e
+       inserts no original baseados em cloned_from_*.
+    5. Hard-delete da proposta (cascade ORM apaga seus steps e resources).
+    6. Atualiza approved_by/updated_at do original.
+    """
+    original = _load_process_with_full_flow(session, proposal.proposed_change_for)
+    if original is None or original.status != ProcessStatus.PUBLISHED:
+        raise ConflictError(
+            "A versao publicada deste processo nao esta mais ativa. "
+            "A proposta nao pode ser aprovada.",
+            code="PROPOSAL_BASE_NOT_PUBLISHED",
+            details={
+                "current_status": (
+                    original.status.value if original is not None else None
+                ),
+            },
+        )
+
+    # Carrega a proposta com flow completo. Embora `proposal` ja seja a row,
+    # forcamos eager loading dos steps/resources/cloned_from para iterar com
+    # seguranca antes do delete cascade.
+    proposal_full = _load_process_with_full_flow(session, proposal.id)
+    assert proposal_full is not None  # acabamos de carregar a row pelo target
+
+    _apply_proposal_merge(session, original=original, proposal=proposal_full)
+
+    original.approved_by = approver_id
+    original.updated_at = datetime.now(timezone.utc)
+    session.add(original)
+    session.delete(proposal_full)
+    session.commit()
+    session.refresh(original)
+
+    if approver_id == original.created_by:
+        logger.warning(
+            "process_proposal_self_approval original_id=%s approver=%s",
+            original.id,
+            approver_id,
+        )
+
+    return original
+
+
+def _load_process_with_full_flow(session: Session, process_id: UUID) -> Process | None:
+    """SELECT do processo + steps + resources em poucas queries (selectinload).
+
+    Usado pelo merge da aprovacao de proposta. Retorna None se nao achar —
+    permite o caller responder com 404/409 conforme o contexto.
+    """
+    statement = (
+        select(Process)
+        .where(Process.id == process_id)
+        .options(
+            selectinload(Process.steps).selectinload(FlowStep.resources),  # type: ignore[attr-defined]
+        )
+    )
+    return session.exec(statement).one_or_none()
+
+
+def _apply_proposal_merge(
+    session: Session, *, original: Process, proposal: Process
+) -> None:
+    """Merge ID-preserving (decisao 5B). Mutaciona `original` no lugar.
+
+    Estrategia:
+    - Steps da proposta com `cloned_from_step_id` apontando pra um step do
+      original que ainda existe -> UPDATE in-place (preserva o id; o
+      progresso pessoal indexado por step_id nao reseta).
+    - Steps do original sem correspondencia na proposta -> DELETE (cascade
+      apaga resources via cascade ORM).
+    - Steps da proposta sem correspondencia (cloned_from None ou apontando
+      pra step que sumiu) -> INSERT como step novo no original (id novo).
+    - Para cada step preservado, aplica a mesma logica nos resources via
+      `cloned_from_resource_id`.
+    - Por fim, copia metadados do proposal pro original.
+
+    Como os steps do `original` ja foram carregados via selectinload, eles
+    estao em memoria — nao precisamos re-querar. O caller (`_approve_proposal`)
+    da o commit que persiste tudo.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Index original.steps por id pra lookup O(1). Convertemos em lista pra
+    # evitar mutacao do collection durante iteracao no SQLAlchemy.
+    orig_steps_by_id: dict[UUID, FlowStep] = {step.id: step for step in original.steps}
+    matched_orig_step_ids: set[UUID] = set()
+
+    new_steps_payload: list[FlowStep] = []
+    for prop_step in proposal.steps:
+        match_id = prop_step.cloned_from_step_id
+        if match_id is not None and match_id in orig_steps_by_id:
+            orig_step = orig_steps_by_id[match_id]
+            orig_step.title = prop_step.title
+            orig_step.description = prop_step.description
+            orig_step.responsible = prop_step.responsible
+            orig_step.sector_id = prop_step.sector_id
+            orig_step.order_index = prop_step.order_index
+            orig_step.estimated_time = prop_step.estimated_time
+            orig_step.updated_at = now
+            session.add(orig_step)
+            matched_orig_step_ids.add(match_id)
+            _apply_step_resource_merge(
+                session, orig_step=orig_step, prop_step=prop_step, now=now
+            )
+        else:
+            new_steps_payload.append(prop_step)
+
+    # Deletes pros steps do original sem match na proposta. Cascade ORM
+    # (Process.steps tem cascade="all, delete-orphan") apaga os resources.
+    for orig_id, orig_step in orig_steps_by_id.items():
+        if orig_id not in matched_orig_step_ids:
+            session.delete(orig_step)
+
+    # Inserts dos steps novos da proposta. O cloned_from_step_id NAO e
+    # copiado — esses steps agora sao "originais" do processo, sem origem
+    # rastreavel.
+    for prop_step in new_steps_payload:
+        new_step = FlowStep(
+            process_id=original.id,
+            sector_id=prop_step.sector_id,
+            order_index=prop_step.order_index,
+            title=prop_step.title,
+            description=prop_step.description,
+            responsible=prop_step.responsible,
+            estimated_time=prop_step.estimated_time,
+            cloned_from_step_id=None,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(new_step)
+        for prop_res in prop_step.resources:
+            session.add(
+                StepResource(
+                    step_id=new_step.id,
+                    type=prop_res.type,
+                    title=prop_res.title,
+                    url=prop_res.url,
+                    content=prop_res.content,
+                    cloned_from_resource_id=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+    # Metadados — copiados em bloco do proposal pro original. Notar que
+    # `status` (PUBLISHED), `created_by`, `access_count`, `id` ficam fora
+    # de proposito: queremos preservar o original.
+    original.title = proposal.title
+    original.short_description = proposal.short_description
+    original.full_description = proposal.full_description
+    original.category = proposal.category
+    original.estimated_time = proposal.estimated_time
+    original.requirements = list(proposal.requirements)
+
+
+def _apply_step_resource_merge(
+    session: Session,
+    *,
+    orig_step: FlowStep,
+    prop_step: FlowStep,
+    now: datetime,
+) -> None:
+    """Merge ID-preserving dos resources dentro de uma etapa preservada.
+
+    Mesma logica do merge de steps, restrita ao escopo de UM step. Resources
+    sao indexados por id; a proposta pode ter renomeado, criado novos ou
+    pedido pra remover existentes — refletido no original via update/insert/
+    delete sob o `orig_step`.
+    """
+    orig_res_by_id: dict[UUID, StepResource] = {
+        res.id: res for res in orig_step.resources
+    }
+    matched_orig_res_ids: set[UUID] = set()
+
+    new_resources_payload: list[StepResource] = []
+    for prop_res in prop_step.resources:
+        match_id = prop_res.cloned_from_resource_id
+        if match_id is not None and match_id in orig_res_by_id:
+            orig_res = orig_res_by_id[match_id]
+            orig_res.type = prop_res.type
+            orig_res.title = prop_res.title
+            orig_res.url = prop_res.url
+            orig_res.content = prop_res.content
+            orig_res.updated_at = now
+            session.add(orig_res)
+            matched_orig_res_ids.add(match_id)
+        else:
+            new_resources_payload.append(prop_res)
+
+    for orig_id, orig_res in orig_res_by_id.items():
+        if orig_id not in matched_orig_res_ids:
+            session.delete(orig_res)
+
+    for prop_res in new_resources_payload:
+        session.add(
+            StepResource(
+                step_id=orig_step.id,
+                type=prop_res.type,
+                title=prop_res.title,
+                url=prop_res.url,
+                content=prop_res.content,
+                cloned_from_resource_id=None,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+
+# ---------- Proposta de edicao: criacao (B-30) ----------
+
+
+def start_edit_proposal(
+    session: Session, process_id: UUID, *, requester_id: UUID
+) -> Process:
+    """Cria (ou recupera) uma proposta de edicao para um processo PUBLISHED.
+
+    Regras (ver WIP_PUBLISHED_PROCESS_EDIT.md):
+    - O original tem que estar PUBLISHED — 409 PROCESS_NOT_PUBLISHED.
+    - Apenas o autor original pode chamar — 403 PROCESS_NOT_OWNED. Admin
+      edita PUBLISHED direto via /processes/{id} (decisao 2), nao usa este
+      endpoint. Se admin chamar, recebe 403 tambem (e o autor original do
+      processo, nao um admin qualquer, que tem direito a propor edicao).
+    - Idempotente: se ja existe proposta pendente (DRAFT/IN_REVIEW)
+      apontando pro original, retorna ela em vez de criar outra. O unique
+      partial index na coluna `proposed_change_for` garante o invariant.
+
+    O clone copia metadados, steps e resources, populando `cloned_from_*`
+    com os ids do original. Esses ids sao usados pelo merge ao aprovar
+    (decisao 5B) para preservar o id da etapa quando ela ainda existe.
+
+    `requester_id` vem do JWT (o router passa `auth.user_id`). NUNCA do body.
+    """
+    original = get_process_admin(session, process_id)
+
+    if original.status != ProcessStatus.PUBLISHED:
+        raise ConflictError(
+            "Apenas processos publicados podem receber propostas de edicao.",
+            code="PROCESS_NOT_PUBLISHED",
+            details={"current_status": original.status.value},
+        )
+
+    if original.created_by != requester_id:
+        # Codigo `PROCESS_NOT_OWNED` (403) reaproveitado de
+        # `_assert_owner_or_admin` — a UX e "este processo nao e seu".
+        raise ForbiddenError(
+            "Apenas o autor original pode propor edicoes neste processo.",
+            code="PROCESS_NOT_OWNED",
+        )
+
+    existing = _find_pending_proposal(session, original.id)
+    if existing is not None:
+        return existing
+
+    proposal = _clone_published_into_proposal(
+        session, original=original, requester_id=requester_id
+    )
+    return proposal
+
+
+def _find_pending_proposal(session: Session, original_id: UUID) -> Process | None:
+    """Retorna a proposta pendente apontando pro original, se houver.
+
+    Diferente de `get_pending_proposal_id` (que retorna so o id), este busca
+    a row inteira para devolver na chamada idempotente.
+    """
+    statement = select(Process).where(
+        Process.proposed_change_for == original_id,
+        Process.status.in_(_PENDING_PROPOSAL_STATUSES),  # type: ignore[attr-defined]
+    )
+    return session.exec(statement).one_or_none()
+
+
+def _clone_published_into_proposal(
+    session: Session, *, original: Process, requester_id: UUID
+) -> Process:
+    """Clona um Process PUBLISHED em um novo DRAFT marcado como proposta.
+
+    `created_by` da proposta e o requester (o autor que propos a edicao —
+    no MVP sempre o mesmo do original, mas explicito por completude).
+    `proposed_change_for` aponta pro id do original. Cada step clonado leva
+    `cloned_from_step_id = original.step.id`; cada resource clonado leva
+    `cloned_from_resource_id = original.resource.id`. Esses ids drivem o
+    merge ID-preserving no approve.
+    """
+    full_original = _load_process_with_full_flow(session, original.id)
+    assert full_original is not None  # acabamos de validar a existencia
+
+    now = datetime.now(timezone.utc)
+    proposal = Process(
+        title=full_original.title,
+        short_description=full_original.short_description,
+        full_description=full_original.full_description,
+        category=full_original.category,
+        estimated_time=full_original.estimated_time,
+        requirements=list(full_original.requirements),
+        access_count=0,
+        status=ProcessStatus.DRAFT,
+        created_by=requester_id,
+        approved_by=None,
+        proposed_change_for=full_original.id,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(proposal)
+    # Flush para gerar o id da proposta antes de associar steps.
+    session.flush()
+
+    for orig_step in full_original.steps:
+        new_step = FlowStep(
+            process_id=proposal.id,
+            sector_id=orig_step.sector_id,
+            order_index=orig_step.order_index,
+            title=orig_step.title,
+            description=orig_step.description,
+            responsible=orig_step.responsible,
+            estimated_time=orig_step.estimated_time,
+            cloned_from_step_id=orig_step.id,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(new_step)
+        session.flush()
+        for orig_res in orig_step.resources:
+            session.add(
+                StepResource(
+                    step_id=new_step.id,
+                    type=orig_res.type,
+                    title=orig_res.title,
+                    url=orig_res.url,
+                    content=orig_res.content,
+                    cloned_from_resource_id=orig_res.id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+    session.commit()
+    session.refresh(proposal)
+    return proposal
 
 
 def restore_process(

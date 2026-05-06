@@ -29,6 +29,7 @@ import {
   useDeleteResource,
   useDeleteStep,
   useProcessForManagement,
+  useProposeEdit,
   useSubmitProcessForReview,
   useUpdateProcess,
   useUpdateStep,
@@ -532,5 +533,86 @@ describe("usePermanentlyDeleteProcess", () => {
     expect(
       queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
     ).toBe(true);
+  });
+});
+
+describe("useProposeEdit", () => {
+  const PROPOSAL_ID = "55555555-5555-4555-8555-555555555555";
+
+  it("envia POST /processes/:id/propose-edit e retorna a proposta", async () => {
+    let calledPath = "";
+    server.use(
+      http.post(
+        `${BASE}/processes/${PROCESS_ID}/propose-edit`,
+        async ({ request }) => {
+          calledPath = new URL(request.url).pathname;
+          return HttpResponse.json(
+            {
+              ...adminProcessPayload,
+              id: PROPOSAL_ID,
+              proposed_change_for: PROCESS_ID,
+              pending_proposal_id: null,
+            },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    queryClient.setQueryData(processManagementQueryKey(PROCESS_ID), {
+      ...adminProcessPayload,
+      status: "PUBLISHED",
+    });
+    queryClient.setQueryData(["my-processes", {}], {
+      processes: [{ ...adminProcessPayload, status: "PUBLISHED" }],
+      total: 1,
+    });
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [{ ...adminProcessPayload, status: "PUBLISHED" }],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useProposeEdit(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calledPath).toBe(`/processes/${PROCESS_ID}/propose-edit`);
+    expect(result.current.data?.id).toBe(PROPOSAL_ID);
+    expect(result.current.data?.proposed_change_for).toBe(PROCESS_ID);
+    // Invalidação: o original e as listas precisam revalidar pra mostrar
+    // pending_proposal_id e o badge "Proposta de edição".
+    expect(
+      queryClient.getQueryState(processManagementQueryKey(PROCESS_ID))
+        ?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(["my-processes", {}])?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
+  });
+
+  it("propaga error.code do backend (não-autor recebe PROCESS_NOT_OWNED)", async () => {
+    server.use(
+      http.post(`${BASE}/processes/${PROCESS_ID}/propose-edit`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "PROCESS_NOT_OWNED",
+              message: "Apenas o autor original.",
+              details: {},
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    const { result } = renderHook(() => useProposeEdit(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.code).toBe("PROCESS_NOT_OWNED");
   });
 });

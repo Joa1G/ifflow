@@ -848,6 +848,61 @@ REQ mapeados: REQ-040, REQ-041
 
 ---
 
+### B-30 — Proposta de edição de processo PUBLISHED (USER autor)
+Status: TODO
+Depende de: B-15, B-17, B-18
+REQ mapeados: REQ-041, REQ-044
+
+**Objetivo:** Permitir que o servidor autor de um processo PUBLISHED proponha edições via clone DRAFT (sombra-draft com FK `proposed_change_for`). Admin aprova a proposta — backend faz merge ID-preserving (steps clonados mantém o id do original quando possível, preservando o progresso pessoal já registrado em `user_progress.step_statuses`). Enquanto há proposta pendente apontando pro original, admin é bloqueado de editar/arquivar o original (workflow linear). Ver decisões 1–8 em `WIP_PUBLISHED_PROCESS_EDIT.md`.
+
+**Critério de pronto:**
+- [ ] Migration adiciona:
+  - `processes.proposed_change_for UUID NULL` com FK → `processes(id) ON DELETE CASCADE`, indexed.
+  - Unique partial index `(proposed_change_for) WHERE proposed_change_for IS NOT NULL` (uma proposta por original).
+  - `flow_steps.cloned_from_step_id UUID NULL` (sem FK constraint — best-effort).
+  - `step_resources.cloned_from_resource_id UUID NULL` (sem FK constraint).
+- [ ] Models `Process`, `FlowStep`, `StepResource` ganham os campos.
+- [ ] `ProcessAdminView` expõe `proposed_change_for` e `pending_proposal_id` (computed: id da proposta DRAFT/IN_REVIEW apontando para este processo, ou None).
+- [ ] `process_service.start_edit_proposal(session, process_id, *, requester_id) -> Process`:
+  - Original deve estar PUBLISHED (409 `PROCESS_NOT_PUBLISHED`).
+  - Apenas autor original pode chamar (403 `PROCESS_NOT_OWNED`); admin edita direto.
+  - Idempotente: se já existe proposta pendente, retorna ela (sem clonar de novo).
+  - Senão clona: novo Process DRAFT com `proposed_change_for=original.id`, metadados copiados, steps clonados com `cloned_from_step_id`, resources com `cloned_from_resource_id`.
+- [ ] `approve_process` faz merge ID-preserving quando o target tem `proposed_change_for` set:
+  - Steps do original com correspondência via `cloned_from_step_id` → update in-place (preserva id, progresso intacto).
+  - Steps do original sem correspondência → delete (cascade resources).
+  - Steps novos da proposta → insert com novo id no original.
+  - Mesma lógica para resources dentro de cada step preservado.
+  - Metadados copiados; proposta hard-deletada; original retornado com novo `approved_by`/`updated_at`.
+  - 409 `PROPOSAL_BASE_NOT_PUBLISHED` se o original deixou de ser PUBLISHED entre criação e aprovação (defesa em profundidade).
+- [ ] `update_process` e `archive_process` retornam 409 `PROCESS_HAS_PENDING_PROPOSAL` (com `details.proposal_id`) quando existe proposta pendente apontando pro processo.
+- [ ] `submit_for_review` retorna 409 `PROPOSAL_BASE_NOT_PUBLISHED` quando a proposta tem `proposed_change_for` apontando para um processo que deixou de ser PUBLISHED.
+- [ ] Router: `POST /processes/{id}/propose-edit` → 201 com `ProcessAdminView` da proposta. Auth: USER autenticado (router passa `auth.user_id` como `requester_id`).
+- [ ] `docs/CONTRACTS.md` documenta o novo endpoint, os campos novos do `ProcessAdminView` e os códigos de erro novos.
+
+**Arquivos permitidos:** `alembic/versions/<nova>_proposed_change_for.py`, `app/models/process.py`, `app/models/flow_step.py`, `app/models/step_resource.py`, `app/schemas/process.py`, `app/services/process_service.py`, `app/routers/processes.py`, `tests/test_process_proposal.py` (novo), `docs/CONTRACTS.md`
+
+**Testes obrigatórios:**
+- Caminho feliz completo: USER autor cria proposta → edita metadados/step/resource → submete → admin aprova → original tem novo conteúdo, proposta sumiu, **id do step preservado** (chave em `user_progress.step_statuses` ainda válida).
+- Não-autor (USER que não é dono) → 403 `PROCESS_NOT_OWNED`.
+- Original DRAFT/IN_REVIEW/ARCHIVED → 409 `PROCESS_NOT_PUBLISHED`.
+- 2× propose-edit consecutivos retornam mesma proposta (mesmo id).
+- Admin tenta `update_process` no original com proposta pendente → 409 `PROCESS_HAS_PENDING_PROPOSAL` com `details.proposal_id`.
+- Admin tenta `archive_process` no original com proposta pendente → 409 idem.
+- Merge: 1 step preservado, 1 deletado da proposta, 1 novo na proposta → após aprovação, original tem step preservado com id antigo, sem o deletado, com o novo (id diferente).
+- Aprovação cuja base virou ARCHIVED entre criação e approve (force-set no banco) → 409 `PROPOSAL_BASE_NOT_PUBLISHED`.
+- Submit de proposta cuja base não é mais PUBLISHED → 409 `PROPOSAL_BASE_NOT_PUBLISHED`.
+- Sem auth → 401 `UNAUTHENTICATED`.
+
+**Checklist de segurança:**
+- [ ] `requester_id` vem do JWT (`auth.user_id`), nunca do body.
+- [ ] Schema do endpoint propose-edit não aceita campos do body — só o id do path.
+- [ ] Mass assignment barrado: o clone copia campos explicitamente (não `Process(**original.dict())`).
+- [ ] IDOR: validação ownership antes de qualquer outra (não vazar existência do processo via mensagem de erro).
+- [ ] Unique partial index garante invariant de "uma proposta pendente por original" mesmo sob race entre dois POST simultâneos.
+
+---
+
 ### B-27 — Logs e auditoria
 Status: TODO
 Depende de: —
@@ -946,6 +1001,8 @@ B-00 → B-01 → B-02 → B-03 → B-04 → B-05 → B-06
                               ↓
                        B-25 (GET /super-admin/users), B-26 (GET /sectors)
                               ↓
+                       B-30 (proposta de edição PUBLISHED)
+                              ↓
                        B-27, B-28 → B-29
 ```
 
@@ -958,4 +1015,4 @@ Dentro de um sprint, estas podem ser atribuídas a pessoas diferentes:
 - **Sprint 2**: B-12 e B-14 em paralelo; depois B-15 e B-13 em paralelo; depois B-16, B-17, B-18 em sequência
 - **Sprint 3**: B-19 → B-20 → B-21 (cadeia, difícil paralelizar)
 - **Sprint 4**: B-22 → B-23 → B-24 (cadeia)
-- **Sprint 5**: B-25 (gating para F-24) e B-26 (gating para F-22) em paralelo — independentes; B-27 e B-28 em paralelo depois; B-29 no final
+- **Sprint 5**: B-25 (gating para F-24) e B-26 (gating para F-22) em paralelo — independentes; B-30 (gating para F-28) depois; B-27 e B-28 em paralelo no fim; B-29 no final

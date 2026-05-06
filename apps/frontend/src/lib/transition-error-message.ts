@@ -25,6 +25,12 @@ export function transitionErrorMessage(
       return "Processo está em revisão. Use 'Retirar da revisão' para editar.";
     case "PROCESS_ARCHIVE_REQUIRES_ADMIN":
       return "Apenas um administrador pode arquivar este processo.";
+    case "PROCESS_HAS_PENDING_PROPOSAL":
+      return "Existe uma proposta de edição pendente. Aprove ou rejeite-a antes de continuar.";
+    case "PROCESS_NOT_PUBLISHED":
+      return "Apenas processos publicados aceitam propostas de edição.";
+    case "PROPOSAL_BASE_NOT_PUBLISHED":
+      return "A versão publicada deste processo não está mais ativa. A proposta não pode prosseguir.";
     default:
       return err.message || fallback;
   }

@@ -411,3 +411,35 @@ export function usePermanentlyDeleteProcess(): UseMutationResult<
       invalidateProcessCaches(queryClient, variables.processId),
   });
 }
+
+/**
+ * Cria uma proposta de edição para um processo PUBLISHED (B-30).
+ *
+ * Retorna o ProcessAdminView da PROPOSTA (DRAFT, com `proposed_change_for`
+ * apontando pro original). É idempotente no backend: chamadas repetidas
+ * devolvem a mesma proposta — a UI navega pro mesmo destino.
+ *
+ * Permitido apenas para o autor original; admins editam o publicado
+ * direto (F-27). Backend retorna 403 PROCESS_NOT_OWNED para terceiros e
+ * 409 PROCESS_NOT_PUBLISHED se o processo não estiver publicado.
+ */
+export function useProposeEdit(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    mutationFn: ({ processId }) =>
+      apiPost<ProcessAdminView>(`/processes/${processId}/propose-edit`, {}),
+    onSettled: (_d, _e, variables) => {
+      // Invalida o cache do original (pra refletir pending_proposal_id)
+      // e as listas que mostram o badge de proposta.
+      queryClient.invalidateQueries({
+        queryKey: processManagementQueryKey(variables.processId),
+      });
+      queryClient.invalidateQueries({ queryKey: ["my-processes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
+    },
+  });
+}

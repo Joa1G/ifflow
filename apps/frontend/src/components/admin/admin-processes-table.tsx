@@ -1,4 +1,4 @@
-import { Clock3 } from "lucide-react";
+import { Clock3, GitPullRequest } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { categoryColors, categoryLabel } from "../../lib/category-colors";
@@ -70,6 +70,12 @@ export function AdminProcessesTable({
             >
               {process.title}
             </Link>
+            {process.proposed_change_for ? (
+              <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.14em] text-ifflow-muted">
+                <GitPullRequest className="h-3 w-3" aria-hidden />
+                Proposta de edição
+              </p>
+            ) : null}
 
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ifflow-muted">
               <Badge
@@ -136,6 +142,12 @@ export function AdminProcessesTable({
                   >
                     {process.title}
                   </Link>
+                  {process.proposed_change_for ? (
+                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.14em] text-ifflow-muted">
+                      <GitPullRequest className="h-3 w-3" aria-hidden />
+                      Proposta de edição
+                    </p>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <Badge
