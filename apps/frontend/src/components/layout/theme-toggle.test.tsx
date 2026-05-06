@@ -11,26 +11,30 @@ beforeEach(() => {
 });
 
 describe("<ThemeToggle />", () => {
-  it("inicia em light: mostra ícone Moon e aria-pressed=false", () => {
+  it("inicia em light: switch desligado e thumb deslocado para a direita (Moon coberta)", () => {
     render(<ThemeToggle />);
-    const button = screen.getByRole("button", {
+    const sw = screen.getByRole("switch", {
       name: /Mudar para tema escuro/i,
     });
-    expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(sw).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("theme-toggle-thumb").className).toContain(
+      "translate-x-6",
+    );
   });
 
-  it("clicar alterna para dark, atualiza aria-pressed e classe no <html>", async () => {
+  it("clicar alterna para dark: aria-checked=true, thumb à esquerda e classe no <html>", async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
 
     await user.click(
-      screen.getByRole("button", { name: /Mudar para tema escuro/i }),
+      screen.getByRole("switch", { name: /Mudar para tema escuro/i }),
     );
 
-    const sunButton = screen.getByRole("button", {
-      name: /Mudar para tema claro/i,
-    });
-    expect(sunButton).toHaveAttribute("aria-pressed", "true");
+    const sw = screen.getByRole("switch", { name: /Mudar para tema claro/i });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("theme-toggle-thumb").className).toContain(
+      "translate-x-0",
+    );
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
   });
@@ -39,8 +43,8 @@ describe("<ThemeToggle />", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "dark");
     render(<ThemeToggle />);
     expect(
-      screen.getByRole("button", { name: /Mudar para tema claro/i }),
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByRole("switch", { name: /Mudar para tema claro/i }),
+    ).toHaveAttribute("aria-checked", "true");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 });
