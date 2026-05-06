@@ -371,6 +371,48 @@ export function useArchiveProcess(): UseMutationResult<
 }
 
 /**
+ * Restaura um processo ARCHIVED para DRAFT. Privilégio exclusivo do admin —
+ * o backend devolve 403 FORBIDDEN para USER comum, mesmo se for o autor.
+ */
+export function useRestoreProcess(): UseMutationResult<
+  ProcessAdminView,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
+    mutationFn: ({ processId }) =>
+      apiPost<ProcessAdminView>(`/processes/${processId}/restore`, {}),
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
+  });
+}
+
+/**
+ * Hard delete de um processo arquivado. Operação destrutiva e irreversível:
+ * apaga a linha do processo + steps + resources via cascade ORM, e o
+ * progresso individual dos usuários via cascade do FK no Postgres.
+ *
+ * Backend exige status=ARCHIVED (409 PROCESS_NOT_DELETABLE caso contrário) —
+ * essa exigência é a rede de segurança contra delete acidental, então a UI
+ * só deve oferecer este hook quando o processo já estiver arquivado.
+ */
+export function usePermanentlyDeleteProcess(): UseMutationResult<
+  void,
+  ApiError,
+  ProcessTransitionInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, ProcessTransitionInput>({
+    mutationFn: async ({ processId }) => {
+      await apiDelete<void>(`/processes/${processId}/permanently`);
+    },
+    onSettled: (_d, _e, variables) =>
+      invalidateProcessCaches(queryClient, variables.processId),
+  });
+}
+
+/**
  * Cria uma proposta de edição para um processo PUBLISHED (B-30).
  *
  * Retorna o ProcessAdminView da PROPOSTA (DRAFT, com `proposed_change_for`
