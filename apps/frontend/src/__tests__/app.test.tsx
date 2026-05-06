@@ -446,7 +446,7 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "Meus processos",
+        name: "Processos que criei",
       }),
     ).toBeInTheDocument();
     // O link da linha aponta para o editor owner-mode.

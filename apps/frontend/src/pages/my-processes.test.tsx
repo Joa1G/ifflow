@@ -77,7 +77,10 @@ describe("<MyProcessesPage />", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Meus processos" }),
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Processos que criei",
+      }),
     ).toBeInTheDocument();
     // O link da linha aponta para o editor owner-mode (não /admin/*).
     const titleLinks = await screen.findAllByRole("link", {

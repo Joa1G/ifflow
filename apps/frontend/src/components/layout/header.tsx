@@ -1,4 +1,5 @@
 import {
+  Bookmark,
   ClipboardList,
   FilePlus2,
   Files,
@@ -171,6 +172,13 @@ function AdminNotificationDot() {
  * Após a regra "USER cria processos / ADMIN aprova" (2026-04-25), criar e
  * acompanhar processos próprios deixou de ser exclusivo de admin — por isso
  * estes itens vivem fora do bloco gated por `isAdmin` no UserMenu.
+ *
+ * "Processos que criei" e "Processos que acompanho" são funcionalidades
+ * distintas: a primeira lista processos cujo `created_by` é o autenticado
+ * (rota `/processes/mine`); a segunda lista processos em que o autenticado
+ * tem `UserProgress` registrado (rota `/processes/following`). Os labels
+ * são intencionalmente verbais ("que criei" / "que acompanho") para deixar
+ * a diferença óbvia no menu.
  */
 function UserProcessMenuItems() {
   return (
@@ -184,7 +192,13 @@ function UserProcessMenuItems() {
       <DropdownMenuItem asChild>
         <Link to="/processes/mine" className="cursor-pointer">
           <Files className="mr-2 h-4 w-4" aria-hidden />
-          Meus processos
+          Processos que criei
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <Link to="/processes/following" className="cursor-pointer">
+          <Bookmark className="mr-2 h-4 w-4" aria-hidden />
+          Processos que acompanho
         </Link>
       </DropdownMenuItem>
     </>
