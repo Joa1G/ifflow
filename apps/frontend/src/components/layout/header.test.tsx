@@ -137,8 +137,14 @@ describe("<Header />", () => {
     // `DropdownMenuItem asChild` faz o próprio menuitem virar o <a>.
     const criar = screen.getByRole("menuitem", { name: /Criar processo/i });
     expect(criar).toHaveAttribute("href", "/processes/new");
-    const meus = screen.getByRole("menuitem", { name: /Meus processos/i });
+    const meus = screen.getByRole("menuitem", {
+      name: /Processos que criei/i,
+    });
     expect(meus).toHaveAttribute("href", "/processes/mine");
+    const acompanho = screen.getByRole("menuitem", {
+      name: /Processos que acompanho/i,
+    });
+    expect(acompanho).toHaveAttribute("href", "/processes/following");
 
     expect(screen.getByRole("menuitem", { name: /Sair/i })).toBeInTheDocument();
     expect(
@@ -170,7 +176,10 @@ describe("<Header />", () => {
       screen.getByRole("menuitem", { name: /Criar processo/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("menuitem", { name: /Meus processos/i }),
+      screen.getByRole("menuitem", { name: /Processos que criei/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Processos que acompanho/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Gerenciar papéis/i }),

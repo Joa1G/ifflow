@@ -551,6 +551,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/progress/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Progress
+         * @description Lista os processos que o usuario autenticado esta acompanhando.
+         *
+         *     IMPORTANTE: este handler precisa ser declarado ANTES do GET
+         *     /{process_id}. Se a ordem inverter, o FastAPI tenta casar "mine" como
+         *     UUID em /{process_id} e responde 422 antes de chegar aqui.
+         */
+        get: operations["list_my_progress_progress_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/progress/{process_id}": {
         parameters: {
             query?: never;
@@ -1257,6 +1281,55 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * UserProgressListItem
+         * @description Item da listagem GET /progress/mine.
+         *
+         *     Projeta apenas o que a tela "Processos que acompanho" exibe: dados
+         *     basicos do processo + contadores agregados. NAO inclui o dict completo
+         *     `step_statuses` para nao inflar a resposta com dados que a listagem
+         *     nunca usa — quem quiser detalhe abre o fluxo e cai no GET
+         *     /progress/{process_id}.
+         *
+         *     `completed_steps` e `total_steps` sao calculados pelo service contra
+         *     as etapas ATUAIS do processo (mesmo principio da reconciliacao do
+         *     GET /progress/{id}): se um admin removeu/adicionou steps, os numeros
+         *     refletem o estado vigente.
+         */
+        UserProgressListItem: {
+            /**
+             * Process Id
+             * Format: uuid
+             */
+            process_id: string;
+            /** Process Title */
+            process_title: string;
+            /** Process Short Description */
+            process_short_description: string;
+            process_category: components["schemas"]["ProcessCategory"];
+            process_status: components["schemas"]["ProcessStatus"];
+            /** Completed Steps */
+            completed_steps: number;
+            /** Total Steps */
+            total_steps: number;
+            /**
+             * Last Updated
+             * Format: date-time
+             */
+            last_updated: string;
+        };
+        /**
+         * UserProgressListResponse
+         * @description Envelope da listagem de processos acompanhados.
+         *
+         *     Mesmo padrao de envelope adotado em `ProcessesManagementListResponse`
+         *     (chave nomeada em vez de array cru) — facilita evolucao futura
+         *     (paginacao, contagens) sem breaking change.
+         */
+        UserProgressListResponse: {
+            /** Following */
+            following: components["schemas"]["UserProgressListItem"][];
         };
         /**
          * UserProgressRead
@@ -2296,6 +2369,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_progress_progress_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProgressListResponse"];
                 };
             };
         };

@@ -2,7 +2,6 @@ import { AlertCircle, Inbox } from "lucide-react";
 import { useState } from "react";
 
 import { ProcessCard } from "../components/processes/process-card";
-import type { ProcessCardData } from "../components/processes/process-card";
 import { ProcessDetailModal } from "../components/processes/process-detail-modal";
 import { SearchBar } from "../components/processes/search-bar";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";

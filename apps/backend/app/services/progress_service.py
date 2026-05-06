@@ -25,13 +25,14 @@ Seguranca: `user_id` SEMPRE vem do JWT (o router passa
 que user A nao alcanca o progresso de B (REQ-102, ADR-007).
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.core.enums import ProcessStatus, StepStatus
+from app.core.enums import ProcessCategory, ProcessStatus, StepStatus
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.process import Process
 from app.models.user_progress import UserProgress
@@ -237,3 +238,90 @@ def update_step_status(
     session.commit()
     session.refresh(progress)
     return progress
+
+
+@dataclass(frozen=True)
+class FollowedProcess:
+    """Projecao read-only de UserProgress + Process para a listagem.
+
+    Tipo intermediario que isola o router do detalhe de SQL: o service
+    devolve uma lista pronta de `FollowedProcess` e o router so adapta
+    para o schema Pydantic. Mantem services agnosticos a FastAPI.
+    """
+
+    process_id: UUID
+    process_title: str
+    process_short_description: str
+    process_category: ProcessCategory
+    process_status: ProcessStatus
+    completed_steps: int
+    total_steps: int
+    last_updated: datetime
+
+
+def list_user_progress(session: Session, *, user_id: UUID) -> list[FollowedProcess]:
+    """Lista todos os progressos do usuario com contadores agregados.
+
+    Usado pelo `GET /progress/mine` (tela "Processos que acompanho").
+
+    Critérios:
+    - Inclui qualquer status de processo (PUBLISHED, ARCHIVED, etc).
+      Em particular ARCHIVED preserva historico — mesma regra que o
+      GET /progress/{id} adota quando o progresso ja existe.
+    - Ordem decrescente por `last_updated` para que a tela mostre o
+      acompanhamento mais recente primeiro.
+    - Esta funcao NAO escreve no banco. A reconciliacao do dict de
+      step_statuses so acontece no GET/PATCH unitarios — aqui apenas
+      INTERPRETAMOS o dict contra os steps atuais (interseccao) para
+      que `completed_steps`/`total_steps` reflitam o processo atual sem
+      criar side-effect numa operacao de leitura em massa.
+
+    Eager loading:
+    - `selectinload(UserProgress.process).selectinload(Process.steps)`
+      faz duas queries adicionais (uma para os processos, uma para os
+      steps de todos eles), independente do tamanho da lista. Isso evita
+      o N+1 de carregar process e steps por progress.
+    """
+    statement = (
+        select(UserProgress)
+        .where(UserProgress.user_id == user_id)
+        .options(
+            selectinload(UserProgress.process).selectinload(  # type: ignore[arg-type]
+                Process.steps
+            )
+        )
+        .order_by(UserProgress.last_updated.desc())  # type: ignore[attr-defined]
+    )
+    rows = session.exec(statement).all()
+
+    items: list[FollowedProcess] = []
+    for progress in rows:
+        process = progress.process
+        # Defesa em profundidade: o FK ondelete=CASCADE garante que essa
+        # condicao nao deveria acontecer em producao, mas se acontecer
+        # (corrupcao de dados, fixture mal montada), pular evita 500.
+        if process is None:
+            continue
+
+        current_step_ids = {str(step.id) for step in process.steps}
+        total_steps = len(current_step_ids)
+        completed_steps = sum(
+            1
+            for step_id, status in progress.step_statuses.items()
+            if step_id in current_step_ids and status == StepStatus.COMPLETED.value
+        )
+
+        items.append(
+            FollowedProcess(
+                process_id=process.id,
+                process_title=process.title,
+                process_short_description=process.short_description,
+                process_category=process.category,
+                process_status=process.status,
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                last_updated=progress.last_updated,
+            )
+        )
+
+    return items

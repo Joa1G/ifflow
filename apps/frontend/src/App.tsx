@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./components/layout/protected-route";
 import AdminProcessesPage from "./pages/admin/processes";
 import ProcessEditorPage from "./pages/admin/process-editor";
 import AdminUsersPage from "./pages/admin/users";
+import FollowingPage from "./pages/following";
 import ForbiddenPage from "./pages/forbidden";
 import HomePage from "./pages/home";
 import LoginPage from "./pages/login";
@@ -60,6 +61,14 @@ function AppShell() {
           element={
             <ProtectedRoute>
               <MyProcessesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/processes/following"
+          element={
+            <ProtectedRoute>
+              <FollowingPage />
             </ProtectedRoute>
           }
         />

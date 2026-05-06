@@ -82,18 +82,20 @@ export default function MyProcessesPage() {
           aria-label="Caminho"
           className="text-[11px] font-medium uppercase tracking-[0.14em] text-ifflow-muted"
         >
-          Processos <span aria-hidden>/</span> Meus
+          Processos <span aria-hidden>/</span> Que criei
         </nav>
 
         <header className="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
             <h1 className="font-serif text-3xl font-medium tracking-tight text-ifflow-ink md:text-4xl">
-              Meus processos
+              Processos que criei
             </h1>
             <p className="mt-2 text-sm text-ifflow-muted">
-              Os processos que você criou. Rascunhos podem ser editados;
+              Os processos cujo autor é você. Rascunhos podem ser editados;
               quando submetidos para revisão, aguardam aprovação de um
-              administrador para ficar visíveis aos servidores.
+              administrador para ficar visíveis aos servidores. Para os
+              processos que você apenas acompanha, veja "Processos que
+              acompanho".
             </p>
           </div>
 

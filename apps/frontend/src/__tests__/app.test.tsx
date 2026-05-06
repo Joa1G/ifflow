@@ -446,7 +446,7 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "Meus processos",
+        name: "Processos que criei",
       }),
     ).toBeInTheDocument();
     // O link da linha aponta para o editor owner-mode.
@@ -454,6 +454,39 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
       name: /Meu primeiro processo/i,
     });
     expect(titleLinks[0]).toHaveAttribute("href", `/processes/${PID}/edit`);
+  });
+
+  it("renderiza /processes/following → FollowingPage com lista do autenticado", async () => {
+    const PID = "55555555-5555-4555-8555-555555555555";
+    server.use(
+      http.get(`${BASE}/progress/mine`, () =>
+        HttpResponse.json({
+          following: [
+            {
+              process_id: PID,
+              process_title: "Processo acompanhado",
+              process_short_description: "Curta",
+              process_category: "RH",
+              process_status: "PUBLISHED",
+              completed_steps: 1,
+              total_steps: 4,
+              last_updated: "2026-05-06T10:00:00Z",
+            },
+          ],
+        }),
+      ),
+    );
+    renderAt("/processes/following");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Processos que acompanho",
+      }),
+    ).toBeInTheDocument();
+    const row = await screen.findByRole("link", {
+      name: /Continuar acompanhamento de Processo acompanhado/i,
+    });
+    expect(row).toHaveAttribute("href", `/processes/${PID}/flow`);
   });
 
   it("renderiza /processes/:id/edit (DRAFT) → editor owner com submit ativo", async () => {
@@ -777,6 +810,13 @@ describe("<App /> — rotas protegidas sem autenticação", () => {
 
   it("redireciona /processes/new para /login", () => {
     renderAt("/processes/new");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entrar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("redireciona /processes/following para /login", () => {
+    renderAt("/processes/following");
     expect(
       screen.getByRole("heading", { level: 1, name: "Entrar" }),
     ).toBeInTheDocument();
