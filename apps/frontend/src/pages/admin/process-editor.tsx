@@ -1,5 +1,11 @@
-import { AlertCircle, Lock } from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  AlertCircle,
+  GitPullRequest,
+  Loader2,
+  Lock,
+  PencilLine,
+} from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { ProcessMetadataForm } from "../../components/admin/process-metadata-form";
@@ -9,13 +15,16 @@ import { SectionEyebrow } from "../../components/admin/section-eyebrow";
 import { StepsSection } from "../../components/admin/steps-section";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
   useCreateProcess,
   useProcessForManagement,
+  useProposeEdit,
   useUpdateProcess,
 } from "../../hooks/use-processes-management";
 import { useProcessFlow } from "../../hooks/use-processes";
+import { transitionErrorMessage } from "../../lib/transition-error-message";
 import type { ProcessMetadataInput } from "../../lib/validators/process";
 import type { components } from "../../types/api";
 
@@ -177,9 +186,14 @@ function EditView({ processId, mode }: EditViewProps) {
   }
 
   const process = adminQuery.data;
+  // Admin pode editar PUBLISHED direto (F-27), exceto quando existe proposta
+  // de edição pendente apontando pro processo (decisão 6A no backend) — aí
+  // travamos pra evitar 409 no save e deixamos a barra de banner explicar.
   const editable =
     process?.status === "DRAFT" ||
-    (mode === "admin" && process?.status === "PUBLISHED");
+    (mode === "admin" &&
+      process?.status === "PUBLISHED" &&
+      !process?.pending_proposal_id);
   const lockMessage = process ? lockMessageFor(process, mode) : null;
 
   return (
@@ -210,6 +224,40 @@ function EditView({ processId, mode }: EditViewProps) {
             </div>
           ) : null}
         </header>
+
+        {/*
+          Banners de proposta de edição (B-30/F-28). A ordem precede as
+          seções de metadados e etapas para deixar o contexto claro
+          assim que a página carrega — antes do usuário tentar interagir
+          com o form e tomar um 409 do backend.
+        */}
+        {process?.proposed_change_for ? (
+          <div className="mt-8">
+            <EditProposalBanner originalId={process.proposed_change_for} />
+          </div>
+        ) : null}
+        {process &&
+        process.status === "PUBLISHED" &&
+        mode === "admin" &&
+        process.pending_proposal_id ? (
+          <div className="mt-8">
+            <PendingProposalBanner
+              proposalId={process.pending_proposal_id}
+              mode={mode}
+            />
+          </div>
+        ) : null}
+        {process &&
+        process.status === "PUBLISHED" &&
+        mode === "owner" &&
+        !process.proposed_change_for ? (
+          <div className="mt-8">
+            <OwnerProposeEditCta
+              processId={process.id}
+              pendingProposalId={process.pending_proposal_id}
+            />
+          </div>
+        ) : null}
 
         <SectionEyebrow index="01" label="Metadados" className="mt-12" />
         <section
@@ -302,11 +350,10 @@ function lockMessageFor(
         ? "Este processo está em revisão. Para editar, use \"Retirar da revisão\" e o processo voltará para rascunho."
         : "Este processo está aguardando aprovação. Aprove a publicação ou aguarde o autor retirar da revisão para editar.";
     case "PUBLISHED":
-      // Admin edita PUBLISHED direto (F-27); owner segue bloqueado até F-28
-      // entregar a CTA "Propor edição".
-      return mode === "admin"
-        ? null
-        : "Processo publicado. Para alterar, arquive uma nova versão ou crie um processo separado.";
+      // Admin edita PUBLISHED direto (F-27). Banners abaixo lidam com
+      // os outros casos: proposta pendente (admin) e CTA propor edição
+      // (owner) — não cabe lock genérico aqui.
+      return null;
     case "ARCHIVED":
       return "Processo arquivado. Apenas leitura.";
     default: {
@@ -314,6 +361,162 @@ function lockMessageFor(
       return _exhaustive;
     }
   }
+}
+
+/**
+ * Banner mostrado quando o processo aberto É uma proposta de edição
+ * (`proposed_change_for` setado). Aparece tanto pro autor (que está
+ * editando o DRAFT) quanto pro admin (que abriu a proposta para
+ * revisar/aprovar/rejeitar). Link "Ver versão publicada" usa a rota
+ * pública para que o admin possa comparar lado a lado.
+ */
+function EditProposalBanner({ originalId }: { originalId: string }) {
+  return (
+    <Alert className="mb-6 border-ifflow-rule bg-ifflow-bone/40">
+      <GitPullRequest className="h-4 w-4" aria-hidden />
+      <AlertTitle>Proposta de edição</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          Este registro é uma proposta de edição do processo publicado.
+          Ao submeter, um administrador vai analisar e poderá aprovar
+          (mesclando as mudanças no original) ou rejeitar.
+        </p>
+        <Link
+          to={`/processes/${originalId}`}
+          className="inline-flex items-center text-sm font-medium text-ifflow-green underline-offset-4 hover:underline"
+        >
+          Ver versão publicada
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/**
+ * Banner mostrado pro admin quando o processo aberto é o ORIGINAL
+ * publicado e existe uma proposta de edição pendente apontando pra ele
+ * (decisão 6A: workflow linear). Edição direta fica bloqueada até a
+ * proposta ser resolvida (aprovar = merge ou rejeitar = arquivar).
+ */
+function PendingProposalBanner({
+  proposalId,
+  mode,
+}: {
+  proposalId: string;
+  mode: ProcessRowMode;
+}) {
+  const editPathPrefix = mode === "admin" ? "/admin/processes" : "/processes";
+  return (
+    <Alert className="mb-6 border-ifflow-rule bg-ifflow-bone/40">
+      <Lock className="h-4 w-4" aria-hidden />
+      <AlertTitle>Proposta de edição em andamento</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          Existe uma proposta de edição pendente para este processo.
+          Resolva-a (aprovar para mesclar ou rejeitar) antes de editar
+          aqui — o backend bloqueia mudanças no original enquanto a
+          proposta existe.
+        </p>
+        <Link
+          to={`${editPathPrefix}/${proposalId}/edit`}
+          className="inline-flex items-center text-sm font-medium text-ifflow-green underline-offset-4 hover:underline"
+        >
+          Ver proposta
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/**
+ * CTA mostrado pro autor (mode=owner) que está vendo seu próprio
+ * processo PUBLISHED. Substitui o lock antigo: em vez de "arquive uma
+ * nova versão", oferece o fluxo formal de propor edição. Click chama
+ * POST /processes/:id/propose-edit e navega para a proposta.
+ *
+ * Idempotente do lado do backend: se já existe proposta pendente, a
+ * chamada devolve a existente — equivalentemente, se `pending_proposal_id`
+ * já está set, mostramos um link direto ("Continuar proposta") em vez
+ * do botão.
+ */
+function OwnerProposeEditCta({
+  processId,
+  pendingProposalId,
+}: {
+  processId: string;
+  pendingProposalId: string | null | undefined;
+}) {
+  const navigate = useNavigate();
+  const proposeEditMutation = useProposeEdit();
+
+  if (pendingProposalId) {
+    return (
+      <Alert className="mb-6 border-ifflow-rule bg-ifflow-bone/40">
+        <PencilLine className="h-4 w-4" aria-hidden />
+        <AlertTitle>Você tem uma proposta de edição em andamento</AlertTitle>
+        <AlertDescription className="space-y-2">
+          <p>
+            Continue editando sua proposta. Ao submeter, um administrador
+            vai revisar.
+          </p>
+          <Link
+            to={`/processes/${pendingProposalId}/edit`}
+            className="inline-flex items-center text-sm font-medium text-ifflow-green underline-offset-4 hover:underline"
+          >
+            Abrir proposta
+          </Link>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const handleClick = () => {
+    proposeEditMutation.mutate(
+      { processId },
+      {
+        onSuccess: (proposal) => {
+          toast.success("Proposta de edição criada.");
+          navigate(`/processes/${proposal.id}/edit`, { replace: true });
+        },
+        onError: (err) => {
+          toast.error(
+            transitionErrorMessage(
+              err,
+              "Não foi possível abrir uma proposta de edição.",
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <Alert className="mb-6 border-ifflow-rule bg-ifflow-bone/40">
+      <PencilLine className="h-4 w-4" aria-hidden />
+      <AlertTitle>Para alterar este processo, proponha uma edição</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p>
+          Você é o autor deste processo publicado. Edições passam por uma
+          revisão de administrador — clique abaixo para abrir uma cópia
+          editável; ao submeter, ela será analisada e mesclada na versão
+          publicada.
+        </p>
+        <Button
+          type="button"
+          onClick={handleClick}
+          disabled={proposeEditMutation.isPending}
+          className="bg-ifflow-green text-white hover:bg-ifflow-green-hover"
+        >
+          {proposeEditMutation.isPending ? (
+            <Loader2 aria-hidden className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <GitPullRequest aria-hidden className="mr-2 h-4 w-4" />
+          )}
+          Propor edição
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 function Breadcrumb({ trail }: { trail: string[] }) {

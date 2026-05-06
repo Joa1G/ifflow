@@ -77,6 +77,7 @@ export function ProcessTransitionBar({
   const hardDeleteMutation = usePermanentlyDeleteProcess();
 
   const isOwner = mode === "owner";
+  const isProposal = Boolean(process.proposed_change_for);
   const canSubmit = process.status === "DRAFT";
   const canApprove = !isOwner && process.status === "IN_REVIEW";
   const canWithdraw = isOwner && process.status === "IN_REVIEW";
@@ -119,7 +120,22 @@ export function ProcessTransitionBar({
     approveMutation.mutate(
       { processId: process.id },
       {
-        onSuccess: () => toast.success("Processo publicado."),
+        onSuccess: (result) => {
+          // Aprovar proposta de edição (B-30) faz o backend mesclar no
+          // original e devolver o original como response — id do response
+          // diferente do id que mandamos. Navega pra view do original
+          // pra evitar 404 ao refetch (a proposta foi hard-deletada).
+          if (result.id !== process.id) {
+            toast.success(
+              "Proposta aprovada. Mudanças mescladas na versão publicada.",
+            );
+            navigate(`/admin/processes/${result.id}/edit`, {
+              replace: true,
+            });
+            return;
+          }
+          toast.success("Processo publicado.");
+        },
         onError: (err) =>
           toast.error(transitionErrorMessage(err, "Não foi possível publicar.")),
       },
@@ -150,8 +166,20 @@ export function ProcessTransitionBar({
       { processId: process.id },
       {
         onSuccess: () => {
-          toast.success("Processo arquivado.");
+          toast.success(
+            isProposal ? "Proposta rejeitada." : "Processo arquivado.",
+          );
           setArchiveOpen(false);
+          // Após rejeitar uma proposta como admin, navega para o editor
+          // do original — que volta a ficar editável agora que o slot
+          // foi liberado. Caso contrário, lista padrão do mode.
+          if (isProposal && !isOwner && process.proposed_change_for) {
+            navigate(
+              `/admin/processes/${process.proposed_change_for}/edit`,
+              { replace: true },
+            );
+            return;
+          }
           navigate(isOwner ? "/processes/mine" : "/admin/processes", {
             replace: true,
           });
@@ -241,7 +269,7 @@ export function ProcessTransitionBar({
             ) : (
               <CheckCircle2 aria-hidden className="mr-2 h-4 w-4" />
             )}
-            Aprovar publicação
+            {isProposal ? "Aprovar proposta" : "Aprovar publicação"}
           </Button>
         )}
 
@@ -271,7 +299,7 @@ export function ProcessTransitionBar({
             className="border-ifflow-rule text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             <Archive aria-hidden className="mr-2 h-4 w-4" />
-            Arquivar
+            {isProposal ? "Rejeitar proposta" : "Arquivar"}
           </Button>
         )}
 
@@ -309,15 +337,17 @@ export function ProcessTransitionBar({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="font-serif text-xl font-medium tracking-tight text-ifflow-ink">
-              Arquivar este processo?
+              {isProposal
+                ? "Rejeitar esta proposta de edição?"
+                : "Arquivar este processo?"}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-ifflow-muted">
               <span className="font-medium text-ifflow-ink">
                 {process.title}
               </span>{" "}
-              deixará de aparecer para os servidores. O progresso já registrado
-              pelos usuários é preservado e pode ser consultado por
-              administradores.
+              {isProposal
+                ? "será arquivada e a versão publicada permanecerá inalterada. O autor pode submeter uma nova proposta depois."
+                : "deixará de aparecer para os servidores. O progresso já registrado pelos usuários é preservado e pode ser consultado por administradores."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -340,8 +370,10 @@ export function ProcessTransitionBar({
               {archiveMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Arquivando…
+                  {isProposal ? "Rejeitando…" : "Arquivando…"}
                 </>
+              ) : isProposal ? (
+                "Rejeitar proposta"
               ) : (
                 "Arquivar processo"
               )}

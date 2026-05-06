@@ -368,6 +368,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/processes/{process_id}/propose-edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose Edit
+         * @description Cria (ou retorna a existente) proposta de edicao para um PUBLISHED.
+         *
+         *     `requester_id` vem do JWT — endpoint nao aceita body. Resposta 201 com
+         *     a proposta (DRAFT, com `proposed_change_for` apontando pro original).
+         *     Em chamada idempotente, ainda devolve 201 com a proposta pre-existente
+         *     — o frontend trata isso normalmente (navegacao para /edit/{proposalId}).
+         */
+        post: operations["propose_edit_processes__process_id__propose_edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/processes/{process_id}/steps": {
         parameters: {
             query?: never;
@@ -848,6 +873,16 @@ export interface components {
          *     ja referencia esse type. Hoje tambem e usado pelo dono nao-admin em
          *     /processes/mine e /processes/{id}/management — a "visao admin" virou "visao
          *     de quem tem permissao para gerenciar o processo".
+         *
+         *     Campos de proposta de edicao (B-30):
+         *     - `proposed_change_for`: quando preenchido, este registro E uma proposta
+         *       de edicao apontando para o id do processo PUBLISHED original. Frontend
+         *       usa pra renderizar banner "Esta e uma proposta de edicao".
+         *     - `pending_proposal_id`: campo COMPUTADO (nao existe no model, calculado
+         *       no service). Quando preenchido, indica que existe uma proposta pendente
+         *       (DRAFT ou IN_REVIEW) apontando para ESTE processo. Frontend usa pra
+         *       renderizar banner no admin do original ("Resolva a proposta pendente
+         *       antes de editar"). Evita um round-trip extra para descobrir isso.
          */
         ProcessAdminView: {
             /**
@@ -876,6 +911,10 @@ export interface components {
             created_by: string;
             /** Approved By */
             approved_by: string | null;
+            /** Proposed Change For */
+            proposed_change_for?: string | null;
+            /** Pending Proposal Id */
+            pending_proposal_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1922,6 +1961,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessAdminView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_edit_processes__process_id__propose_edit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

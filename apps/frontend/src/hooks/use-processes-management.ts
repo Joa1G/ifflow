@@ -371,10 +371,17 @@ export function useArchiveProcess(): UseMutationResult<
 }
 
 /**
- * Restaura um processo ARCHIVED para DRAFT. Privilégio exclusivo do admin —
- * o backend devolve 403 FORBIDDEN para USER comum, mesmo se for o autor.
+ * Cria uma proposta de edição para um processo PUBLISHED (B-30).
+ *
+ * Retorna o ProcessAdminView da PROPOSTA (DRAFT, com `proposed_change_for`
+ * apontando pro original). É idempotente no backend: chamadas repetidas
+ * devolvem a mesma proposta — a UI navega pro mesmo destino.
+ *
+ * Permitido apenas para o autor original; admins editam o publicado
+ * direto (F-27). Backend retorna 403 PROCESS_NOT_OWNED para terceiros e
+ * 409 PROCESS_NOT_PUBLISHED se o processo não estiver publicado.
  */
-export function useRestoreProcess(): UseMutationResult<
+export function useProposeEdit(): UseMutationResult<
   ProcessAdminView,
   ApiError,
   ProcessTransitionInput
@@ -382,32 +389,15 @@ export function useRestoreProcess(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<ProcessAdminView, ApiError, ProcessTransitionInput>({
     mutationFn: ({ processId }) =>
-      apiPost<ProcessAdminView>(`/processes/${processId}/restore`, {}),
-    onSettled: (_d, _e, variables) =>
-      invalidateProcessCaches(queryClient, variables.processId),
-  });
-}
-
-/**
- * Hard delete de um processo arquivado. Operação destrutiva e irreversível:
- * apaga a linha do processo + steps + resources via cascade ORM, e o
- * progresso individual dos usuários via cascade do FK no Postgres.
- *
- * Backend exige status=ARCHIVED (409 PROCESS_NOT_DELETABLE caso contrário) —
- * essa exigência é a rede de segurança contra delete acidental, então a UI
- * só deve oferecer este hook quando o processo já estiver arquivado.
- */
-export function usePermanentlyDeleteProcess(): UseMutationResult<
-  void,
-  ApiError,
-  ProcessTransitionInput
-> {
-  const queryClient = useQueryClient();
-  return useMutation<void, ApiError, ProcessTransitionInput>({
-    mutationFn: async ({ processId }) => {
-      await apiDelete<void>(`/processes/${processId}/permanently`);
+      apiPost<ProcessAdminView>(`/processes/${processId}/propose-edit`, {}),
+    onSettled: (_d, _e, variables) => {
+      // Invalida o cache do original (pra refletir pending_proposal_id)
+      // e as listas que mostram o badge de proposta.
+      queryClient.invalidateQueries({
+        queryKey: processManagementQueryKey(variables.processId),
+      });
+      queryClient.invalidateQueries({ queryKey: ["my-processes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-processes-list"] });
     },
-    onSettled: (_d, _e, variables) =>
-      invalidateProcessCaches(queryClient, variables.processId),
   });
 }

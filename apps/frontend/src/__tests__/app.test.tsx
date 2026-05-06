@@ -574,7 +574,7 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
     expect(screen.queryByText(/Edição bloqueada/i)).not.toBeInTheDocument();
   });
 
-  it("renderiza /processes/:id/edit (PUBLISHED) owner → mostra lock (CTA Propor edição vem em F-28)", async () => {
+  it("renderiza /processes/:id/edit (PUBLISHED) owner → mostra CTA Propor edição (F-28)", async () => {
     const PID = "88888888-8888-4888-8888-888888888888";
     server.use(
       http.get(`${BASE}/processes/${PID}/management`, () =>
@@ -590,6 +590,8 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
           access_count: 0,
           created_by: mockSuperAdmin.id,
           approved_by: mockSuperAdmin.id,
+          proposed_change_for: null,
+          pending_proposal_id: null,
           created_at: "2026-04-21T10:00:00Z",
           updated_at: "2026-04-21T10:00:00Z",
         }),
@@ -605,13 +607,118 @@ describe("<App /> — rotas protegidas (autenticado como SUPER_ADMIN)", () => {
       ),
     );
     renderAt(`/processes/${PID}/edit`);
+    // Banner CTA aparece em vez do antigo "Edição bloqueada".
     expect(
-      await screen.findByText(/Edição bloqueada/i),
+      await screen.findByText(/Para alterar este processo, proponha uma edição/i),
     ).toBeInTheDocument();
-    // Submit não aparece quando disabled.
+    expect(
+      screen.getByRole("button", { name: /Propor edição/i }),
+    ).toBeInTheDocument();
+    // Form fica read-only enquanto não há proposta — submit some.
     expect(
       screen.queryByRole("button", { name: /Salvar metadados/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renderiza /admin/processes/:id/edit (PUBLISHED com proposta pendente) → mostra banner Ver proposta e bloqueia edição (F-28)", async () => {
+    const PID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const PROPOSAL_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    server.use(
+      http.get(`${BASE}/processes/${PID}/management`, () =>
+        HttpResponse.json({
+          id: PID,
+          title: "Original com proposta pendente",
+          short_description: "Curta",
+          full_description: "Completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "PUBLISHED",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: mockSuperAdmin.id,
+          proposed_change_for: null,
+          pending_proposal_id: PROPOSAL_ID,
+          created_at: "2026-04-21T10:00:00Z",
+          updated_at: "2026-04-21T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PID, title: "Original com proposta pendente" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/admin/processes/${PID}/edit`);
+    expect(
+      await screen.findByText(/Proposta de edição em andamento/i),
+    ).toBeInTheDocument();
+    // Link "Ver proposta" aponta pro editor admin da proposta.
+    const verProposta = screen.getByRole("link", { name: /Ver proposta/i });
+    expect(verProposta).toHaveAttribute(
+      "href",
+      `/admin/processes/${PROPOSAL_ID}/edit`,
+    );
+    // Form não fica editável (evita 409 do backend).
+    expect(
+      screen.queryByRole("button", { name: /Salvar metadados/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renderiza editor de uma proposta de edição → banner identifica como proposta (F-28)", async () => {
+    const PROPOSAL_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const ORIGINAL_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    server.use(
+      http.get(`${BASE}/processes/${PROPOSAL_ID}/management`, () =>
+        HttpResponse.json({
+          id: PROPOSAL_ID,
+          title: "Proposta de edição",
+          short_description: "Curta",
+          full_description: "Completa.",
+          category: "RH",
+          estimated_time: "30 dias",
+          requirements: [],
+          status: "DRAFT",
+          access_count: 0,
+          created_by: mockSuperAdmin.id,
+          approved_by: null,
+          proposed_change_for: ORIGINAL_ID,
+          pending_proposal_id: null,
+          created_at: "2026-05-05T10:00:00Z",
+          updated_at: "2026-05-05T10:00:00Z",
+        }),
+      ),
+      http.get(`${BASE}/processes/${PROPOSAL_ID}/flow`, () =>
+        HttpResponse.json({
+          process: { id: PROPOSAL_ID, title: "Proposta de edição" },
+          steps: [],
+        }),
+      ),
+      http.get(`${BASE}/sectors`, () =>
+        HttpResponse.json({ sectors: [], total: 0 }),
+      ),
+    );
+    renderAt(`/processes/${PROPOSAL_ID}/edit`);
+    // Heading do banner identifica como proposta.
+    expect(
+      await screen.findByRole("heading", {
+        name: /Proposta de edição/i,
+        level: 5,
+      }),
+    ).toBeInTheDocument();
+    // Link "Ver versão publicada" aponta pra rota pública do original.
+    const verPublicada = screen.getByRole("link", {
+      name: /Ver versão publicada/i,
+    });
+    expect(verPublicada).toHaveAttribute("href", `/processes/${ORIGINAL_ID}`);
+    // É DRAFT, então o submit do form aparece — proposta é editável.
+    expect(
+      screen.getByRole("button", { name: /Salvar metadados/i }),
+    ).toBeInTheDocument();
   });
 
   it("renderiza /processes/:id/flow → ProcessFlowPage (real)", async () => {
