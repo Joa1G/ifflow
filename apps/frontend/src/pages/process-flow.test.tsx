@@ -148,4 +148,46 @@ describe("<ProcessFlowPage /> — F-20", () => {
       `/progress/${PROCESS_ID}/steps/${STEP_ID}`,
     );
   });
+
+  it("permite alternar entre raias por setor, sequência linear e tabela", async () => {
+    server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
+        HttpResponse.json(flowPayload),
+      ),
+      http.get(`${BASE}/progress/${PROCESS_ID}`, () =>
+        HttpResponse.json(progressPayload),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(
+      await screen.findByText(/Raias agrupadas por setor responsável\./i),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("tab", { name: /Sequência linear/i }),
+    );
+
+    expect(
+      await screen.findByText(/Etapas em sequência, lado a lado\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: /Etapas do fluxo em sequência linear/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: /raia/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Tabela/i }));
+
+    expect(
+      await screen.findByText(/Lista em tabela — ideal para fluxos longos\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: /Status/i }),
+    ).toBeInTheDocument();
+  });
 });

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
 import type { components } from "../../types/api";
+import { LinearFlow } from "./linear-flow";
+import { FlowTable } from "./flow-table";
 import { Swimlane } from "./swimlane";
 
 type FlowStepRead = components["schemas"]["FlowStepRead"];
@@ -9,6 +11,7 @@ type SectorRef = components["schemas"]["SectorRef"];
 
 interface FlowViewerProps {
   flow: ProcessFullFlow;
+  viewMode?: FlowViewMode;
   onSelectStep?: (step: FlowStepRead) => void;
   /**
    * Função chamada por cada StepCard para montar o controle de status do
@@ -17,6 +20,8 @@ interface FlowViewerProps {
    */
   renderStatusControl?: (step: FlowStepRead) => ReactNode;
 }
+
+export type FlowViewMode = "swimlane" | "linear" | "table";
 
 /**
  * Ordena os setores pela ORDEM DA PRIMEIRA APARIÇÃO no fluxo: o setor
@@ -34,17 +39,20 @@ function collectSectorsInFlowOrder(steps: FlowStepRead[]): SectorRef[] {
 }
 
 function FlowMarker({
+  id,
   label,
   position,
 }: {
+  id?: string;
   label: string;
   position: "start" | "end";
 }) {
   return (
     <div
+      id={id}
       role="separator"
       aria-label={label}
-      className="relative flex items-center py-8"
+      className="relative flex scroll-mt-24 items-center py-8"
     >
       <div aria-hidden className="h-px flex-1 bg-foreground/30" />
       <div className="flex items-center gap-3 bg-background px-4">
@@ -65,6 +73,7 @@ function FlowMarker({
 
 export function FlowViewer({
   flow,
+  viewMode = "swimlane",
   onSelectStep,
   renderStatusControl,
 }: FlowViewerProps) {
@@ -74,22 +83,48 @@ export function FlowViewer({
   return (
     <div className="overflow-x-auto">
       <div className="min-w-fit">
-        <FlowMarker label="Início do fluxo" position="start" />
-
-        <div role="list" aria-label="Etapas do fluxo agrupadas por setor">
-          {sectors.map((sector) => (
-            <div key={sector.id} role="listitem">
-              <Swimlane
-                sector={sector}
-                allSteps={sortedSteps}
-                onSelectStep={onSelectStep}
-                renderStatusControl={renderStatusControl}
+        {viewMode === "swimlane" ? (
+          <>
+            <FlowMarker
+              id="flow-start"
+              label="Início do fluxo"
+              position="start"
+            />
+          <div role="list" aria-label="Etapas do fluxo agrupadas por setor">
+            {sectors.map((sector) => (
+              <div key={sector.id} role="listitem">
+                <Swimlane
+                  sector={sector}
+                  allSteps={sortedSteps}
+                  onSelectStep={onSelectStep}
+                  renderStatusControl={renderStatusControl}
               />
             </div>
           ))}
-        </div>
-
-        <FlowMarker label="Fim do fluxo" position="end" />
+          </div>
+            <FlowMarker id="flow-end" label="Fim do fluxo" position="end" />
+          </>
+        ) : viewMode === "linear" ? (
+          <>
+            <FlowMarker
+              id="flow-start"
+              label="Início do fluxo"
+              position="start"
+            />
+          <LinearFlow
+            steps={sortedSteps}
+            onSelectStep={onSelectStep}
+            renderStatusControl={renderStatusControl}
+          />
+            <FlowMarker id="flow-end" label="Fim do fluxo" position="end" />
+          </>
+        ) : (
+          <FlowTable
+            steps={sortedSteps}
+            onSelectStep={onSelectStep}
+            renderStatusControl={renderStatusControl}
+          />
+        )}
       </div>
     </div>
   );

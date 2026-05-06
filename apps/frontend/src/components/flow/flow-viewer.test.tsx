@@ -66,6 +66,32 @@ describe("<FlowViewer />", () => {
     expect(swimlanes[1]).toHaveAccessibleName(/DRH/);
   });
 
+  it("renderiza sequência linear sem swimlanes quando viewMode=linear", () => {
+    render(<FlowViewer flow={flow} viewMode="linear" />);
+
+    expect(
+      screen.getByRole("list", { name: /Etapas do fluxo em sequência linear/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: /raia/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText(/PROAD/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/DRH/).length).toBeGreaterThan(0);
+  });
+
+  it("renderiza modo tabela com colunas e sem marcadores de fluxo", () => {
+    render(<FlowViewer flow={flow} viewMode="table" />);
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Etapa/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Setor/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Responsável/i })).toBeInTheDocument();
+    expect(screen.getByText(/3 etapas · 2 setores/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("separator", { name: /início do fluxo/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("exibe todos os steps em ordem global numérica", () => {
     render(<FlowViewer flow={flow} />);
 

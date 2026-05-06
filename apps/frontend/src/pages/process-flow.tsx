@@ -1,14 +1,25 @@
-import { AlertCircle, ArrowLeft, Inbox, Info } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  GalleryVerticalEnd,
+  Info,
+  Rows3,
+  Table2,
+} from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
-import { FlowViewer } from "../components/flow/flow-viewer";
+import {
+  FlowViewer,
+  type FlowViewMode,
+} from "../components/flow/flow-viewer";
 import { ProgressSummary } from "../components/flow/progress-summary";
 import { StatusSelector } from "../components/flow/status-selector";
 import { StepDetailModal } from "../components/flow/step-detail-modal";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Skeleton } from "../components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useProcessFlow } from "../hooks/use-processes";
 import { useProgress, useUpdateStepStatus } from "../hooks/use-progress";
 import type { components } from "../types/api";
@@ -49,6 +60,7 @@ export default function ProcessFlowPage() {
   const progressQuery = useProgress(id);
   const updateStatus = useUpdateStepStatus();
   const [selectedStep, setSelectedStep] = useState<FlowStepRead | null>(null);
+  const [viewMode, setViewMode] = useState<FlowViewMode>("swimlane");
 
   const stepStatuses = progressQuery.data?.step_statuses ?? {};
   const updatingStepId = updateStatus.isPending
@@ -79,6 +91,13 @@ export default function ProcessFlowPage() {
       />
     );
   };
+
+  const viewModeDescription =
+    viewMode === "swimlane"
+      ? "Raias agrupadas por setor responsável."
+      : viewMode === "linear"
+        ? "Etapas em sequência, lado a lado."
+        : "Lista em tabela — ideal para fluxos longos.";
 
   return (
     <main className="container mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-12">
@@ -158,8 +177,50 @@ export default function ProcessFlowPage() {
 
       {flowQuery.isSuccess && flowQuery.data.steps.length > 0 ? (
         <section aria-label="Fluxograma do processo" className="mt-10">
+          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Visualização
+              </p>
+              <p className="text-lg text-foreground/90">
+                {viewModeDescription}
+              </p>
+            </div>
+
+            <Tabs
+              value={viewMode}
+              onValueChange={(value) => setViewMode(value as FlowViewMode)}
+              className="w-full lg:w-auto"
+            >
+              <TabsList className="h-auto justify-start gap-1 rounded-xl border border-border bg-card p-1 lg:justify-end">
+                <TabsTrigger
+                  value="swimlane"
+                  className="gap-2 rounded-lg px-4 py-2 text-sm"
+                >
+                  <Rows3 aria-hidden className="h-4 w-4" />
+                  Raias por setor
+                </TabsTrigger>
+                <TabsTrigger
+                  value="linear"
+                  className="gap-2 rounded-lg px-4 py-2 text-sm"
+                >
+                  <GalleryVerticalEnd aria-hidden className="h-4 w-4" />
+                  Sequência linear
+                </TabsTrigger>
+                <TabsTrigger
+                  value="table"
+                  className="gap-2 rounded-lg px-4 py-2 text-sm"
+                >
+                  <Table2 aria-hidden className="h-4 w-4" />
+                  Tabela
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
           <FlowViewer
             flow={flowQuery.data}
+            viewMode={viewMode}
             onSelectStep={setSelectedStep}
             renderStatusControl={renderStatusControl}
           />
