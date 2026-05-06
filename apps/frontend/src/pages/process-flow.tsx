@@ -2,6 +2,7 @@ import {
   AlertCircle,
   ArrowLeft,
   GalleryVerticalEnd,
+  Inbox,
   Info,
   Rows3,
   Table2,
