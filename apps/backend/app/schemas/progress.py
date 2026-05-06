@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.core.enums import StepStatus
+from app.core.enums import ProcessCategory, ProcessStatus, StepStatus
 
 
 class UserProgressRead(BaseModel):
@@ -39,3 +39,39 @@ class StepStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: StepStatus
+
+
+class UserProgressListItem(BaseModel):
+    """Item da listagem GET /progress/mine.
+
+    Projeta apenas o que a tela "Processos que acompanho" exibe: dados
+    basicos do processo + contadores agregados. NAO inclui o dict completo
+    `step_statuses` para nao inflar a resposta com dados que a listagem
+    nunca usa — quem quiser detalhe abre o fluxo e cai no GET
+    /progress/{process_id}.
+
+    `completed_steps` e `total_steps` sao calculados pelo service contra
+    as etapas ATUAIS do processo (mesmo principio da reconciliacao do
+    GET /progress/{id}): se um admin removeu/adicionou steps, os numeros
+    refletem o estado vigente.
+    """
+
+    process_id: UUID
+    process_title: str
+    process_short_description: str
+    process_category: ProcessCategory
+    process_status: ProcessStatus
+    completed_steps: int
+    total_steps: int
+    last_updated: datetime
+
+
+class UserProgressListResponse(BaseModel):
+    """Envelope da listagem de processos acompanhados.
+
+    Mesmo padrao de envelope adotado em `ProcessesManagementListResponse`
+    (chave nomeada em vez de array cru) — facilita evolucao futura
+    (paginacao, contagens) sem breaking change.
+    """
+
+    following: list[UserProgressListItem]

@@ -15,7 +15,12 @@ from sqlmodel import Session
 from app.core.dependencies import get_current_user_payload
 from app.core.security import TokenPayload
 from app.database import get_session
-from app.schemas.progress import StepStatusUpdate, UserProgressRead
+from app.schemas.progress import (
+    StepStatusUpdate,
+    UserProgressListItem,
+    UserProgressListResponse,
+    UserProgressRead,
+)
 from app.services import progress_service
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -28,6 +33,35 @@ def _to_read(progress) -> UserProgressRead:
         process_id=progress.process_id,
         step_statuses=progress.step_statuses,
         last_updated=progress.last_updated,
+    )
+
+
+@router.get("/mine", response_model=UserProgressListResponse)
+def list_my_progress(
+    session: Session = Depends(get_session),
+    auth: TokenPayload = Depends(get_current_user_payload),
+) -> UserProgressListResponse:
+    """Lista os processos que o usuario autenticado esta acompanhando.
+
+    IMPORTANTE: este handler precisa ser declarado ANTES do GET
+    /{process_id}. Se a ordem inverter, o FastAPI tenta casar "mine" como
+    UUID em /{process_id} e responde 422 antes de chegar aqui.
+    """
+    items = progress_service.list_user_progress(session, user_id=auth.user_id)
+    return UserProgressListResponse(
+        following=[
+            UserProgressListItem(
+                process_id=item.process_id,
+                process_title=item.process_title,
+                process_short_description=item.process_short_description,
+                process_category=item.process_category,
+                process_status=item.process_status,
+                completed_steps=item.completed_steps,
+                total_steps=item.total_steps,
+                last_updated=item.last_updated,
+            )
+            for item in items
+        ]
     )
 
 

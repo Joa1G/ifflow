@@ -28,7 +28,7 @@ from uuid import UUID, uuid4
 import sqlalchemy as sa
 from sqlalchemy import JSON, Column, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 
 class UserProgress(SQLModel, table=True):
@@ -72,3 +72,9 @@ class UserProgress(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+    # Unidirecional: usado pelo endpoint GET /progress/mine para projetar
+    # titulo, categoria e status do processo sem precisar de uma segunda
+    # query por linha. Sem `back_populates` porque Process nao precisa
+    # navegar para os progressos (a unica direcao usada e progress -> process).
+    process: "Process" = Relationship()  # noqa: F821
