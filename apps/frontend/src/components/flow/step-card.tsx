@@ -65,22 +65,20 @@ export function StepCard({ step, onSelect, statusControl }: StepCardProps) {
             </p>
           ) : null}
 
-          <div className="mt-3 flex items-center justify-between gap-2">
-            {statusControl ? (
-              <div className="min-w-0 flex-1">{statusControl}</div>
-            ) : (
-              <span aria-hidden />
-            )}
+          <div className="mt-3 flex flex-col gap-2">
+            {statusControl ? <div>{statusControl}</div> : null}
 
-            <button
-              type="button"
-              onClick={() => onSelect?.(step)}
-              aria-label={`Ver detalhes da etapa ${step.order}: ${step.title}`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-sm text-[11px] font-medium text-primary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            >
-              Ver detalhes
-              <ArrowRight aria-hidden className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onSelect?.(step)}
+                aria-label={`Ver detalhes da etapa ${step.order}: ${step.title}`}
+                className="inline-flex shrink-0 items-center gap-1 rounded-sm text-[11px] font-medium text-primary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              >
+                Ver detalhes
+                <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

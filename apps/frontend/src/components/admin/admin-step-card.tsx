@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -29,6 +29,7 @@ interface AdminStepCardProps {
   /** Step imediatamente abaixo na ordem atual, se houver. */
   nextStep: FlowStepRead | null;
   onEdit: (step: FlowStepRead) => void;
+  onViewDetails: (step: FlowStepRead) => void;
   /**
    * Quando `false`, esconde reorder/edit/remove. Default `true` para
    * compatibilidade com call sites antigos.
@@ -50,6 +51,7 @@ export function AdminStepCard({
   previousStep,
   nextStep,
   onEdit,
+  onViewDetails,
   editable = true,
 }: AdminStepCardProps) {
   const updateMutation = useUpdateStep();
@@ -115,6 +117,15 @@ export function AdminStepCard({
             {resourceCount} {resourceCount === 1 ? "recurso" : "recursos"}
           </span>
         </dl>
+        <button
+          type="button"
+          onClick={() => onViewDetails(step)}
+          aria-label={`Ver detalhes da etapa ${step.order}: ${step.title}`}
+          className="mt-3 inline-flex items-center gap-1 rounded-sm text-[11px] font-medium text-primary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          Ver detalhes
+          <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {editable ? (

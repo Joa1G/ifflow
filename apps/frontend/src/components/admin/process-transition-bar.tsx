@@ -1,9 +1,11 @@
 import {
   Archive,
+  ArchiveRestore,
   CheckCircle2,
   Loader2,
   RotateCcw,
   Send,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +14,8 @@ import { toast } from "sonner";
 import {
   useApproveProcess,
   useArchiveProcess,
+  usePermanentlyDeleteProcess,
+  useRestoreProcess,
   useSubmitProcessForReview,
   useWithdrawProcess,
 } from "../../hooks/use-processes-management";
@@ -63,11 +67,14 @@ export function ProcessTransitionBar({
 }: ProcessTransitionBarProps) {
   const navigate = useNavigate();
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [hardDeleteOpen, setHardDeleteOpen] = useState(false);
 
   const submitMutation = useSubmitProcessForReview();
   const approveMutation = useApproveProcess();
   const withdrawMutation = useWithdrawProcess();
   const archiveMutation = useArchiveProcess();
+  const restoreMutation = useRestoreProcess();
+  const hardDeleteMutation = usePermanentlyDeleteProcess();
 
   const isOwner = mode === "owner";
   const canSubmit = process.status === "DRAFT";
@@ -76,12 +83,20 @@ export function ProcessTransitionBar({
   const canArchive = isOwner
     ? process.status === "DRAFT" || process.status === "IN_REVIEW"
     : process.status !== "ARCHIVED";
+  // Restore + hard delete são privilégios exclusivos de admin sobre processos
+  // já arquivados. O backend exige role admin (FORBIDDEN para USER) e status
+  // ARCHIVED (409 caso contrário) — espelhamos as duas restrições aqui pra
+  // não oferecer botão que seria recusado.
+  const canRestore = !isOwner && process.status === "ARCHIVED";
+  const canHardDelete = !isOwner && process.status === "ARCHIVED";
 
   const isAnyPending =
     submitMutation.isPending ||
     approveMutation.isPending ||
     withdrawMutation.isPending ||
-    archiveMutation.isPending;
+    archiveMutation.isPending ||
+    restoreMutation.isPending ||
+    hardDeleteMutation.isPending;
 
   const handleSubmit = () => {
     submitMutation.mutate(
@@ -151,7 +166,48 @@ export function ProcessTransitionBar({
     );
   };
 
-  const noActions = !canSubmit && !canApprove && !canWithdraw && !canArchive;
+  const handleRestore = () => {
+    restoreMutation.mutate(
+      { processId: process.id },
+      {
+        onSuccess: () =>
+          toast.success(
+            "Processo restaurado para rascunho. Edite e re-publique quando estiver pronto.",
+          ),
+        onError: (err) =>
+          toast.error(transitionErrorMessage(err, "Não foi possível restaurar.")),
+      },
+    );
+  };
+
+  const handleHardDelete = () => {
+    hardDeleteMutation.mutate(
+      { processId: process.id },
+      {
+        onSuccess: () => {
+          toast.success("Processo excluído definitivamente.");
+          setHardDeleteOpen(false);
+          // Sempre admin (canHardDelete exige !isOwner). Volta pra fila de
+          // moderação porque a página atual aponta pra um id que sumiu.
+          navigate("/admin/processes", { replace: true });
+        },
+        onError: (err) => {
+          toast.error(
+            transitionErrorMessage(err, "Não foi possível excluir o processo."),
+          );
+          setHardDeleteOpen(false);
+        },
+      },
+    );
+  };
+
+  const noActions =
+    !canSubmit &&
+    !canApprove &&
+    !canWithdraw &&
+    !canArchive &&
+    !canRestore &&
+    !canHardDelete;
   if (noActions) return null;
 
   return (
@@ -218,6 +274,35 @@ export function ProcessTransitionBar({
             Arquivar
           </Button>
         )}
+
+        {canRestore && (
+          <Button
+            type="button"
+            onClick={handleRestore}
+            disabled={isAnyPending}
+            className="bg-ifflow-green text-white hover:bg-ifflow-green-hover"
+          >
+            {restoreMutation.isPending ? (
+              <Loader2 aria-hidden className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ArchiveRestore aria-hidden className="mr-2 h-4 w-4" />
+            )}
+            Restaurar
+          </Button>
+        )}
+
+        {canHardDelete && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setHardDeleteOpen(true)}
+            disabled={isAnyPending}
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+            Excluir definitivamente
+          </Button>
+        )}
       </div>
 
       <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
@@ -259,6 +344,52 @@ export function ProcessTransitionBar({
                 </>
               ) : (
                 "Arquivar processo"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={hardDeleteOpen} onOpenChange={setHardDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif text-xl font-medium tracking-tight text-ifflow-ink">
+              Excluir este processo definitivamente?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-ifflow-muted">
+              <span className="font-medium text-ifflow-ink">
+                {process.title}
+              </span>
+              , suas etapas e o progresso individual de todos os usuários que
+              acompanharam serão removidos permanentemente. Esta ação{" "}
+              <span className="font-medium text-ifflow-ink">
+                não pode ser desfeita
+              </span>
+              . Para reverter, use “Restaurar” em vez de excluir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={hardDeleteMutation.isPending}
+              className="border-ifflow-rule"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleHardDelete();
+              }}
+              disabled={hardDeleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {hardDeleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo…
+                </>
+              ) : (
+                "Excluir definitivamente"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

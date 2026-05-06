@@ -21,6 +21,8 @@ import {
   useAdminProcessesList,
   useApproveProcess,
   useArchiveProcess,
+  usePermanentlyDeleteProcess,
+  useRestoreProcess,
   useCreateProcess,
   useCreateResource,
   useCreateStep,
@@ -475,6 +477,58 @@ describe("useArchiveProcess", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.status).toBe("ARCHIVED");
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
+  });
+});
+
+describe("useRestoreProcess", () => {
+  it("envia POST /processes/:id/restore e invalida caches", async () => {
+    server.use(
+      http.post(`${BASE}/processes/${PROCESS_ID}/restore`, () =>
+        HttpResponse.json({ ...adminProcessPayload, status: "DRAFT" }),
+      ),
+    );
+
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [{ ...adminProcessPayload, status: "ARCHIVED" }],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useRestoreProcess(), { wrapper });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.status).toBe("DRAFT");
+    expect(
+      queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
+    ).toBe(true);
+  });
+});
+
+describe("usePermanentlyDeleteProcess", () => {
+  it("envia DELETE /processes/:id/permanently e invalida caches", async () => {
+    let called = false;
+    server.use(
+      http.delete(`${BASE}/processes/${PROCESS_ID}/permanently`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    queryClient.setQueryData(adminProcessesListQueryKey(), {
+      processes: [{ ...adminProcessPayload, status: "ARCHIVED" }],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => usePermanentlyDeleteProcess(), {
+      wrapper,
+    });
+    result.current.mutate({ processId: PROCESS_ID });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(called).toBe(true);
     expect(
       queryClient.getQueryState(adminProcessesListQueryKey())?.isInvalidated,
     ).toBe(true);
