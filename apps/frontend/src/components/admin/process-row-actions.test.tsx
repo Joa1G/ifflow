@@ -132,6 +132,9 @@ describe("<ProcessRowActions />", () => {
       screen.getByRole("menuitem", { name: /Editar/i }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("menuitem", { name: /^Excluir$/i }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("menuitem", { name: /Arquivar/i }),
     ).toBeInTheDocument();
     expect(
@@ -142,12 +145,15 @@ describe("<ProcessRowActions />", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("ARCHIVED só mostra Editar (sem ações de transição)", async () => {
+  it("ARCHIVED em admin mostra Editar e Excluir, sem outras transições", async () => {
     renderActions("ARCHIVED");
     await openMenu();
 
     expect(
       screen.getByRole("menuitem", { name: /Editar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /^Excluir$/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Arquivar/i }),
@@ -184,6 +190,43 @@ describe("<ProcessRowActions />", () => {
     await waitFor(() => expect(called).toBe(true));
   });
 
+  it("clicar em Excluir num processo não arquivado abre aviso e permite arquivar dali", async () => {
+    let archiveCalled = false;
+    let hardDeleteCalled = false;
+    server.use(
+      http.delete(`${BASE}/processes/${PROCESS_ID}`, () => {
+        archiveCalled = true;
+        return HttpResponse.json({
+          ...makeProcess("PUBLISHED"),
+          status: "ARCHIVED",
+        });
+      }),
+      http.delete(`${BASE}/processes/${PROCESS_ID}/permanently`, () => {
+        hardDeleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderActions("PUBLISHED");
+    const user = await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: /^Excluir$/i }));
+
+    expect(
+      screen.getByRole("alertdialog", {
+        name: /Para excluir, arquive primeiro/i,
+      }),
+    ).toBeInTheDocument();
+    expect(archiveCalled).toBe(false);
+    expect(hardDeleteCalled).toBe(false);
+
+    await user.click(
+      screen.getByRole("button", { name: /Arquivar agora/i }),
+    );
+
+    await waitFor(() => expect(archiveCalled).toBe(true));
+    expect(hardDeleteCalled).toBe(false);
+  });
+
   it("clicar em Arquivar abre AlertDialog antes de chamar a API", async () => {
     let called = false;
     server.use(
@@ -208,6 +251,33 @@ describe("<ProcessRowActions />", () => {
 
     await user.click(
       screen.getByRole("button", { name: /Arquivar processo/i }),
+    );
+
+    await waitFor(() => expect(called).toBe(true));
+  });
+
+  it("ARCHIVED em admin: Excluir abre confirmação e chama DELETE /permanently", async () => {
+    let called = false;
+    server.use(
+      http.delete(`${BASE}/processes/${PROCESS_ID}/permanently`, () => {
+        called = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderActions("ARCHIVED");
+    const user = await openMenu();
+    await user.click(screen.getByRole("menuitem", { name: /^Excluir$/i }));
+
+    expect(
+      screen.getByRole("alertdialog", {
+        name: /Excluir este processo definitivamente\?/i,
+      }),
+    ).toBeInTheDocument();
+    expect(called).toBe(false);
+
+    await user.click(
+      screen.getByRole("button", { name: /Excluir definitivamente/i }),
     );
 
     await waitFor(() => expect(called).toBe(true));
@@ -268,6 +338,9 @@ describe('<ProcessRowActions mode="owner" />', () => {
       screen.getByRole("menuitem", { name: /Editar/i }),
     ).toBeInTheDocument();
     expect(
+      screen.queryByRole("menuitem", { name: /^Excluir$/i }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("menuitem", { name: /Arquivar/i }),
     ).not.toBeInTheDocument();
     expect(
@@ -275,6 +348,18 @@ describe('<ProcessRowActions mode="owner" />', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /Aprovar publicação/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ARCHIVED em owner: não mostra Excluir definitivamente", async () => {
+    renderActions("ARCHIVED", "owner");
+    await openMenu();
+
+    expect(
+      screen.getByRole("menuitem", { name: /Editar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /^Excluir$/i }),
     ).not.toBeInTheDocument();
   });
 });

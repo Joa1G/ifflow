@@ -6,6 +6,7 @@ import {
   Pencil,
   RotateCcw,
   Send,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 import {
   useApproveProcess,
   useArchiveProcess,
+  usePermanentlyDeleteProcess,
   useSubmitProcessForReview,
   useWithdrawProcess,
 } from "../../hooks/use-processes-management";
@@ -70,17 +72,27 @@ export function ProcessRowActions({
   mode = "admin",
 }: ProcessRowActionsProps) {
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteHintOpen, setDeleteHintOpen] = useState(false);
+  const [hardDeleteOpen, setHardDeleteOpen] = useState(false);
 
   const submitMutation = useSubmitProcessForReview();
   const approveMutation = useApproveProcess();
   const withdrawMutation = useWithdrawProcess();
   const archiveMutation = useArchiveProcess();
+  const hardDeleteMutation = usePermanentlyDeleteProcess();
 
   const isPending =
     submitMutation.isPending ||
     approveMutation.isPending ||
     withdrawMutation.isPending ||
-    archiveMutation.isPending;
+    archiveMutation.isPending ||
+    hardDeleteMutation.isPending;
+
+  const closeDialogs = () => {
+    setArchiveOpen(false);
+    setDeleteHintOpen(false);
+    setHardDeleteOpen(false);
+  };
 
   const handleSubmit = () => {
     submitMutation.mutate(
@@ -119,13 +131,31 @@ export function ProcessRowActions({
       {
         onSuccess: () => {
           toast.success(`"${process.title}" arquivado.`);
-          setArchiveOpen(false);
+          closeDialogs();
         },
         onError: (err) => {
           toast.error(
             transitionErrorMessage(err, "Não foi possível arquivar."),
           );
-          setArchiveOpen(false);
+          closeDialogs();
+        },
+      },
+    );
+  };
+
+  const handleHardDelete = () => {
+    hardDeleteMutation.mutate(
+      { processId: process.id },
+      {
+        onSuccess: () => {
+          toast.success(`"${process.title}" excluído definitivamente.`);
+          closeDialogs();
+        },
+        onError: (err) => {
+          toast.error(
+            transitionErrorMessage(err, "Não foi possível excluir o processo."),
+          );
+          closeDialogs();
         },
       },
     );
@@ -165,6 +195,11 @@ export function ProcessRowActions({
   const canArchive = isOwner
     ? process.status === "DRAFT" || process.status === "IN_REVIEW"
     : process.status !== "ARCHIVED";
+  const canHardDelete = !isOwner && process.status === "ARCHIVED";
+  // A ação "Excluir" só aparece quando ela pode avançar o usuário:
+  // ou vira exclusão definitiva (ARCHIVED/admin), ou explica o pré-requisito
+  // e oferece o atalho de arquivar agora.
+  const canDelete = canArchive || canHardDelete;
 
   return (
     <>
@@ -217,19 +252,37 @@ export function ProcessRowActions({
             </DropdownMenuItem>
           )}
 
-          {canArchive && (
+          {(canArchive || canDelete) && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setArchiveOpen(true);
-                }}
-                className="text-destructive focus:text-destructive"
-              >
-                <Archive className="mr-2 h-4 w-4" aria-hidden />
-                Arquivar
-              </DropdownMenuItem>
+              {canDelete && (
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    if (canHardDelete) {
+                      setHardDeleteOpen(true);
+                      return;
+                    }
+                    setDeleteHintOpen(true);
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+                  Excluir
+                </DropdownMenuItem>
+              )}
+              {canArchive && (
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setArchiveOpen(true);
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Archive className="mr-2 h-4 w-4" aria-hidden />
+                  Arquivar
+                </DropdownMenuItem>
+              )}
             </>
           )}
         </DropdownMenuContent>
@@ -274,6 +327,92 @@ export function ProcessRowActions({
                 </>
               ) : (
                 "Arquivar processo"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteHintOpen} onOpenChange={setDeleteHintOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif text-xl font-medium tracking-tight text-ifflow-ink">
+              Para excluir, arquive primeiro
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-ifflow-muted">
+              O processo{" "}
+              <span className="font-medium text-ifflow-ink">
+                {process.title}
+              </span>{" "}
+              só pode ser excluído definitivamente depois de ser arquivado.
+              Você pode fazer isso agora e voltar depois para concluir a
+              exclusão pelo menu de ações.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={archiveMutation.isPending}
+              className="border-ifflow-rule"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleArchive();
+              }}
+              disabled={archiveMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {archiveMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Arquivando…
+                </>
+              ) : (
+                "Arquivar agora"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={hardDeleteOpen} onOpenChange={setHardDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif text-xl font-medium tracking-tight text-ifflow-ink">
+              Excluir este processo definitivamente?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-ifflow-muted">
+              <span className="font-medium text-ifflow-ink">
+                {process.title}
+              </span>{" "}
+              será removido em definitivo, junto com as etapas e recursos
+              vinculados. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={hardDeleteMutation.isPending}
+              className="border-ifflow-rule"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleHardDelete();
+              }}
+              disabled={hardDeleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {hardDeleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo…
+                </>
+              ) : (
+                "Excluir definitivamente"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
