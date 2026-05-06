@@ -120,7 +120,7 @@ describe("<App /> — rotas públicas", () => {
       expect(
         screen.getByRole("heading", {
           level: 1,
-          name: /Consulte qualquer processo da PROAD/i,
+          name: /Consulte qualquer processo do início ao fim/i,
         }),
       ).toBeInTheDocument(),
     );
@@ -130,7 +130,7 @@ describe("<App /> — rotas públicas", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("HomePage usa IDs reais nas recomendações (sem placeholders UUID zero)", async () => {
+  it("HomePage usa IDs reais nos links do catálogo (sem placeholders UUID zero)", async () => {
     server.use(
       http.get(`${BASE}/processes`, () =>
         HttpResponse.json({
@@ -170,11 +170,14 @@ describe("<App /> — rotas públicas", () => {
     renderAt("/");
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { level: 2, name: /Novo na PROAD/i }),
+        screen.getByRole("heading", {
+          level: 2,
+          name: /Processos publicados/i,
+        }),
       ).toBeInTheDocument(),
     );
 
-    // Garantia de regressão: nenhum link da home aponta para o UUID
+    // Garantia de regressão: nenhum link do catálogo aponta para o UUID
     // placeholder antigo (bug F-15 original que causava 404 no modal).
     for (const link of screen.getAllByRole("link")) {
       const href = link.getAttribute("href") ?? "";
