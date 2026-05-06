@@ -36,26 +36,41 @@
     --ifflow-muted: 150 6% 46%;
   }
 
+  /*
+   * Modo escuro — paleta navy do brand book "Stack Flow" (ver
+   * IFFLOW Menus.html / screens/brand.jsx). O verde acadêmico institucional
+   * fica difícil de ler sobre navy, então o `--primary` no dark assume o
+   * teal #1FB8A6 que já é o accent da marca; é o mesmo verde-azulado dos
+   * mockups do dark e mantém a continuidade visual com o IfflowMark.
+   */
   .dark {
-    --background: 150 20% 6%;
-    --foreground: 40 20% 98%;
-    --card: 150 20% 8%;
-    --card-foreground: 40 20% 98%;
-    --popover: 150 20% 8%;
-    --popover-foreground: 40 20% 98%;
-    --primary: 160 84% 45%;
-    --primary-foreground: 150 20% 6%;
-    --secondary: 150 12% 14%;
-    --secondary-foreground: 40 20% 98%;
-    --muted: 150 12% 14%;
-    --muted-foreground: 150 8% 64%;
-    --accent: 150 12% 14%;
-    --accent-foreground: 40 20% 98%;
-    --destructive: 0 62% 42%;
-    --destructive-foreground: 40 20% 98%;
-    --border: 150 12% 18%;
-    --input: 150 12% 18%;
-    --ring: 160 84% 45%;
+    --background: 216 60% 9%;          /* #0A1626 */
+    --foreground: 210 27% 96%;         /* #F0F4F8 */
+    --card: 215 55% 13%;               /* #0F1E33 */
+    --card-foreground: 210 27% 96%;
+    --popover: 215 55% 13%;
+    --popover-foreground: 210 27% 96%;
+    --primary: 173 71% 42%;            /* #1FB8A6 — teal do brand */
+    --primary-foreground: 216 60% 9%;
+    --secondary: 214 52% 16%;          /* #142840 — surface elevada */
+    --secondary-foreground: 210 27% 96%;
+    --muted: 214 52% 16%;
+    --muted-foreground: 213 18% 71%;   /* #A8B5C4 — legível sobre navy */
+    --accent: 214 52% 16%;
+    --accent-foreground: 210 27% 96%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 27% 96%;
+    --border: 215 25% 22%;             /* equivale a rgba(255,255,255,0.10) */
+    --input: 215 25% 22%;
+    --ring: 173 71% 42%;
+
+    --ifflow-green: 173 71% 42%;
+    --ifflow-green-hover: 173 71% 36%;
+    --ifflow-ink: 210 27% 96%;
+    --ifflow-bone: 216 60% 9%;
+    --ifflow-paper: 215 55% 13%;
+    --ifflow-rule: 215 25% 22%;
+    --ifflow-muted: 213 18% 71%;
   }
 }
 

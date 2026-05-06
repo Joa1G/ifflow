@@ -11,6 +11,32 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Anti-FOUC: aplica o tema escolhido (ou preferência do sistema)
+      // antes do React montar — sem isso, recarregar uma página em dark
+      // mostraria um flash branco. Mantém a mesma chave/lógica de
+      // src/lib/theme.ts (getInitialTheme) — se mexer lá, espelhe aqui.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("ifflow:theme");
+          var prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : prefersDark
+                ? "dark"
+                : "light";
+          if (theme === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (_) {
+          // localStorage / matchMedia indisponíveis — segue light por
+          // segurança. Erro silencioso pra não derrubar o boot.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

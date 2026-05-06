@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { IfflowLogo } from "../brand/ifflow-logo";
 import { Sidebar } from "./sidebar";
+import { ThemeToggle } from "./theme-toggle";
 
 /**
  * Rotas com shell próprio (login, cadastro, recuperação, pendente).
@@ -99,9 +100,12 @@ export function AppShell({ children }: AppShellProps) {
             <IfflowLogo size={22} compact />
           </Link>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ifflow-muted">
-          PROAD · IFAM
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-ifflow-muted sm:inline">
+            PROAD · IFAM
+          </span>
+          <ThemeToggle />
+        </div>
       </header>
 
       <div className="flex flex-1">
