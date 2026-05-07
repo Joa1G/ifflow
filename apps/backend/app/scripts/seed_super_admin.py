@@ -10,8 +10,13 @@ NUNCA e chamado automaticamente no startup da aplicacao.
 import logging
 import os
 import sys
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlmodel import Session, select
+
+# Carrega o .env da raiz do monorepo (mesma resolução que config.py)
+load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 
 from app.core.enums import UserRole, UserStatus
 from app.core.security import hash_password
