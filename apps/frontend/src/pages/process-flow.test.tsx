@@ -42,6 +42,19 @@ const flowPayload = {
   ],
 };
 
+const detailPayload = {
+  id: PROCESS_ID,
+  title: "Solicitação de Capacitação",
+  short_description: "Curta",
+  full_description:
+    "Processo para solicitação de afastamento para capacitação stricto sensu.",
+  category: "RH",
+  estimated_time: "30 a 45 dias",
+  requirements: ["Servidor efetivo", "Aprovação da chefia imediata"],
+  step_count: 1,
+  access_count: 0,
+};
+
 const progressPayload = {
   id: "prog-1",
   process_id: PROCESS_ID,
@@ -85,6 +98,9 @@ function renderPage() {
 describe("<ProcessFlowPage /> — F-20", () => {
   it("exibe o texto literal do REQ-102 sobre o checklist pessoal", async () => {
     server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json(detailPayload),
+      ),
       http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
         HttpResponse.json(flowPayload),
       ),
@@ -114,6 +130,9 @@ describe("<ProcessFlowPage /> — F-20", () => {
     const patchCalls: Array<{ url: string; body: unknown }> = [];
 
     server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json(detailPayload),
+      ),
       http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
         HttpResponse.json(flowPayload),
       ),
@@ -151,6 +170,9 @@ describe("<ProcessFlowPage /> — F-20", () => {
 
   it("permite alternar entre raias por setor, sequência linear e tabela", async () => {
     server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json(detailPayload),
+      ),
       http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
         HttpResponse.json(flowPayload),
       ),
@@ -189,5 +211,67 @@ describe("<ProcessFlowPage /> — F-20", () => {
     expect(
       screen.getByRole("columnheader", { name: /Status/i }),
     ).toBeInTheDocument();
+  });
+
+  it("exibe a seção 'Sobre o processo' com categoria, descrição, prazo e pré-requisitos", async () => {
+    server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json(detailPayload),
+      ),
+      http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
+        HttpResponse.json(flowPayload),
+      ),
+      http.get(`${BASE}/progress/${PROCESS_ID}`, () =>
+        HttpResponse.json(progressPayload),
+      ),
+    );
+
+    renderPage();
+
+    // Espera a query do detalhe resolver — o skeleton inicial usa
+    // aria-label="Sobre o processo" mas só após o load aparece o
+    // aria-labelledby apontando para o título da seção.
+    expect(
+      await screen.findByText("Recursos Humanos"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Processo para solicitação de afastamento para capacitação stricto sensu\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("30 a 45 dias")).toBeInTheDocument();
+    expect(screen.getByText("Servidor efetivo")).toBeInTheDocument();
+    expect(
+      screen.getByText("Aprovação da chefia imediata"),
+    ).toBeInTheDocument();
+  });
+
+  it("se a query do detalhe falha, esconde a seção mas mantém o fluxo visível", async () => {
+    server.use(
+      http.get(`${BASE}/processes/${PROCESS_ID}`, () =>
+        HttpResponse.json(
+          { error: { code: "NOT_FOUND", message: "Não encontrado" } },
+          { status: 404 },
+        ),
+      ),
+      http.get(`${BASE}/processes/${PROCESS_ID}/flow`, () =>
+        HttpResponse.json(flowPayload),
+      ),
+      http.get(`${BASE}/progress/${PROCESS_ID}`, () =>
+        HttpResponse.json(progressPayload),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /Fluxo:/i }),
+      ).toBeInTheDocument(),
+    );
+
+    expect(
+      screen.queryByRole("region", { name: /sobre o processo/i }),
+    ).not.toBeInTheDocument();
   });
 });

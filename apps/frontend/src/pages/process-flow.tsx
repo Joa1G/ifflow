@@ -18,10 +18,11 @@ import {
 import { ProgressSummary } from "../components/flow/progress-summary";
 import { StatusSelector } from "../components/flow/status-selector";
 import { StepDetailModal } from "../components/flow/step-detail-modal";
+import { ProcessOverviewSection } from "../components/processes/process-overview-section";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { useProcessFlow } from "../hooks/use-processes";
+import { useProcess, useProcessFlow } from "../hooks/use-processes";
 import { useProgress, useUpdateStepStatus } from "../hooks/use-progress";
 import type { components } from "../types/api";
 
@@ -58,6 +59,11 @@ const CHECKLIST_DISCLAIMER =
 export default function ProcessFlowPage() {
   const { id } = useParams<{ id: string }>();
   const flowQuery = useProcessFlow(id);
+  // Detail roda em paralelo com o flow — TanStack faz cache de cada um
+  // separado, e a página exibe a ficha (categoria/descrição/prazo/
+  // requisitos) que o ProcessFullFlow não traz. Erro silencioso: se o
+  // detail falhar mas o flow vier, o usuário ainda vê o fluxograma.
+  const detailQuery = useProcess(id);
   const progressQuery = useProgress(id);
   const updateStatus = useUpdateStepStatus();
   const [selectedStep, setSelectedStep] = useState<FlowStepRead | null>(null);
@@ -152,6 +158,11 @@ export default function ProcessFlowPage() {
           />
         </div>
       ) : null}
+
+      <ProcessOverviewSection
+        process={detailQuery.isSuccess ? detailQuery.data : undefined}
+        isLoading={detailQuery.isPending}
+      />
 
       {flowQuery.isPending ? <FlowSkeleton /> : null}
 
