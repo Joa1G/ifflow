@@ -1,7 +1,12 @@
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import { useDeleteResource } from "../../hooks/use-processes-management";
+import {
+  useDeleteResource,
+  useUpdateResource,
+} from "../../hooks/use-processes-management";
+import type { StepResourceInput } from "../../lib/validators/process";
 import type { components } from "../../types/api";
 import {
   AlertDialog,
@@ -15,6 +20,7 @@ import {
   AlertDialogTrigger,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
+import { ResourceInlineForm } from "./resource-inline-form";
 import { ResourceTypeBadge } from "./resource-type-badge";
 
 type StepResourceRead = components["schemas"]["StepResourceRead"];
@@ -61,10 +67,12 @@ function ResourceRow({
   processId: string;
   stepId: string;
 }) {
-  const mutation = useDeleteResource();
+  const [isEditing, setIsEditing] = useState(false);
+  const deleteMutation = useDeleteResource();
+  const updateMutation = useUpdateResource();
 
   const handleDelete = () => {
-    mutation.mutate(
+    deleteMutation.mutate(
       { processId, stepId, resourceId: resource.id },
       {
         onSuccess: () => toast.success("Recurso removido"),
@@ -73,6 +81,50 @@ function ResourceRow({
       },
     );
   };
+
+  const handleSubmitEdit = (values: StepResourceInput) => {
+    updateMutation.mutate(
+      {
+        processId,
+        stepId,
+        resourceId: resource.id,
+        patch: {
+          type: values.type,
+          title: values.title,
+          url: values.url ? values.url : null,
+          content: values.content ? values.content : null,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success("Recurso atualizado");
+          setIsEditing(false);
+        },
+        onError: (err) =>
+          toast.error(err.message ?? "Não foi possível atualizar o recurso."),
+      },
+    );
+  };
+
+  if (isEditing) {
+    return (
+      <li>
+        <ResourceInlineForm
+          mode="edit"
+          formId={`edit-resource-${resource.id}`}
+          isPending={updateMutation.isPending}
+          initialValues={{
+            type: resource.type,
+            title: resource.title,
+            url: resource.url ?? "",
+            content: resource.content ?? "",
+          }}
+          onSubmit={handleSubmitEdit}
+          onCancel={() => setIsEditing(false)}
+        />
+      </li>
+    );
+  }
 
   return (
     <li className="flex items-start gap-3 rounded-md border border-ifflow-rule bg-ifflow-paper px-3 py-2.5">
@@ -87,6 +139,15 @@ function ResourceRow({
           </p>
         ) : null}
       </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={`Editar recurso ${resource.title}`}
+        onClick={() => setIsEditing(true)}
+      >
+        <Pencil aria-hidden className="h-4 w-4" />
+      </Button>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
@@ -96,7 +157,7 @@ function ResourceRow({
             aria-label={`Remover recurso ${resource.title}`}
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
-            {mutation.isPending ? (
+            {deleteMutation.isPending ? (
               <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
             ) : (
               <Trash2 aria-hidden className="h-4 w-4" />

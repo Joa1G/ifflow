@@ -123,19 +123,19 @@ function ModalBody({ step }: { step: FlowStepRead }) {
 
         {documents.length > 0 ? (
           <Section label="Documentos necessários">
-            <ResourceList resources={documents} variant="link" />
+            <ResourceList resources={documents} />
           </Section>
         ) : null}
 
         {legalBasis.length > 0 ? (
           <Section label="Base legal">
-            <ResourceList resources={legalBasis} variant="citation" />
+            <ResourceList resources={legalBasis} />
           </Section>
         ) : null}
 
         {pops.length > 0 ? (
           <Section label="Procedimento operacional">
-            <ResourceList resources={pops} variant="link" />
+            <ResourceList resources={pops} />
           </Section>
         ) : null}
 
@@ -176,13 +176,7 @@ function Section({
   );
 }
 
-function ResourceList({
-  resources,
-  variant,
-}: {
-  resources: StepResourceRead[];
-  variant: "link" | "citation";
-}) {
+function ResourceList({ resources }: { resources: StepResourceRead[] }) {
   return (
     <ol className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3">
       {resources.map((resource, index) => (
@@ -191,7 +185,7 @@ function ResourceList({
             {String(index + 1).padStart(2, "0")}
           </span>
           <div className="min-w-0">
-            <ResourceItem resource={resource} variant={variant} />
+            <ResourceItem resource={resource} />
           </div>
         </li>
       ))}
@@ -199,49 +193,33 @@ function ResourceList({
   );
 }
 
-function ResourceItem({
-  resource,
-  variant,
-}: {
-  resource: StepResourceRead;
-  variant: "link" | "citation";
-}) {
-  const hasSafeUrl = resource.url !== null && isSafeHref(resource.url);
+function ResourceItem({ resource }: { resource: StepResourceRead }) {
+  // URL e content são independentes: um recurso pode ter os dois (ex: Lei
+  // 8.112 com link pro Planalto + trecho do artigo citado). Renderizamos
+  // título-como-link OU título-como-texto, e logo abaixo o content quando
+  // existir — antes da correção, ter URL safe disparava early return e
+  // o content ficava invisível.
+  const hasSafeUrl =
+    resource.url !== null && resource.url !== "" && isSafeHref(resource.url);
 
-  if (hasSafeUrl && resource.url) {
-    return (
-      <a
-        href={resource.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-start gap-1.5 text-sm font-medium leading-[1.5] text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-      >
-        <span>{resource.title}</span>
-        <ExternalLink
-          aria-hidden
-          className="mt-[3px] h-3.5 w-3.5 flex-shrink-0 text-muted-foreground"
-        />
-      </a>
-    );
-  }
-
-  if (variant === "citation") {
-    return (
-      <div>
-        <p className="text-sm font-medium text-foreground">{resource.title}</p>
-        {resource.content ? (
-          <blockquote className="mt-1 border-l-2 border-border pl-3 text-sm italic leading-[1.6] text-muted-foreground">
-            {resource.content}
-          </blockquote>
-        ) : null}
-      </div>
-    );
-  }
-
-  // Variante "link" sem URL válida — mostra o título como texto inerte.
   return (
     <div>
-      <p className="text-sm font-medium text-foreground">{resource.title}</p>
+      {hasSafeUrl && resource.url ? (
+        <a
+          href={resource.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-start gap-1.5 text-sm font-medium leading-[1.5] text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          <span>{resource.title}</span>
+          <ExternalLink
+            aria-hidden
+            className="mt-[3px] h-3.5 w-3.5 flex-shrink-0 text-muted-foreground"
+          />
+        </a>
+      ) : (
+        <p className="text-sm font-medium text-foreground">{resource.title}</p>
+      )}
       {resource.content ? (
         <p className="mt-1 text-sm leading-[1.6] text-muted-foreground">
           {resource.content}

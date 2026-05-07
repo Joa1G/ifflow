@@ -46,6 +46,7 @@ from app.schemas.process import (
     StepResourceAdminView,
     StepResourceCreate,
     StepResourceRead,
+    StepResourceUpdate,
 )
 from app.services import process_service
 
@@ -417,6 +418,30 @@ def create_resource(
         session,
         process_id,
         step_id,
+        data,
+        requester_id=auth.user_id,
+        requester_role=auth.role,
+    )
+    return _resource_to_view(resource)
+
+
+@router.patch(
+    "/{process_id}/steps/{step_id}/resources/{resource_id}",
+    response_model=StepResourceAdminView,
+)
+def update_resource(
+    process_id: UUID,
+    step_id: UUID,
+    resource_id: UUID,
+    data: StepResourceUpdate,
+    auth: TokenPayload = Depends(get_current_user_payload),
+    session: Session = Depends(get_session),
+) -> StepResourceAdminView:
+    resource = process_service.update_step_resource(
+        session,
+        process_id,
+        step_id,
+        resource_id,
         data,
         requester_id=auth.user_id,
         requester_role=auth.role,

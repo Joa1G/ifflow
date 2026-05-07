@@ -619,6 +619,210 @@ def test_deletar_resource_como_user_comum_retorna_403(
     assert response.status_code == 403
 
 
+# ---------- PATCH resource ----------
+
+
+def test_atualizar_resource_titulo_e_url(client: TestClient, session: Session):
+    admin = _create_user(session, email="admin.pr@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={"type": "DOCUMENT", "title": "Antigo", "url": "https://old.com"},
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"title": "Novo", "url": "https://new.com"},
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Novo"
+    assert body["url"] == "https://new.com"
+    assert body["type"] == "DOCUMENT"  # nao foi enviado, manteve
+
+
+def test_atualizar_resource_acrescenta_content_sem_perder_url(
+    client: TestClient, session: Session
+):
+    """Regressao do bug 'so um aparece': quando admin edita um recurso pra
+    ter URL E content juntos, ambos persistem no banco."""
+    admin = _create_user(session, email="admin.prc@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={
+            "type": "LEGAL_BASIS",
+            "title": "Lei",
+            "url": "https://planalto.gov.br/lei",
+        },
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"content": "Art. 87. Apos cada quinquenio..."},
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["url"] == "https://planalto.gov.br/lei"
+    assert body["content"].startswith("Art. 87")
+
+
+def test_atualizar_resource_em_step_errado_retorna_404_idor(
+    client: TestClient, session: Session
+):
+    """IDOR: PATCH com step_id que nao bate com o resource real -> 404."""
+    admin = _create_user(session, email="admin.pri@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step_a = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id, order=1),
+        headers=_auth_headers(admin),
+    ).json()
+    step_b = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id, order=2),
+        headers=_auth_headers(admin),
+    ).json()
+    resource_b = client.post(
+        f"/processes/{process['id']}/steps/{step_b['id']}/resources",
+        json={"type": "LINK", "title": "B", "url": "https://b"},
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step_a['id']}/resources/{resource_b['id']}",
+        json={"title": "hack"},
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
+
+
+def test_atualizar_resource_sem_token_retorna_401(client: TestClient, session: Session):
+    admin = _create_user(session, email="admin.prn@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={"type": "LINK", "title": "x", "url": "https://x"},
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"title": "novo"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_atualizar_resource_como_user_comum_em_processo_alheio_retorna_403(
+    client: TestClient, session: Session
+):
+    admin = _create_user(session, email="admin.pru@ifam.edu.br")
+    user = _create_user(session, email="u.pru@ifam.edu.br", role=UserRole.USER)
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={"type": "LINK", "title": "x", "url": "https://x"},
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"title": "novo"},
+        headers=_auth_headers(user),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "PROCESS_NOT_OWNED"
+
+
+def test_atualizar_resource_em_processo_archived_retorna_409(
+    client: TestClient, session: Session
+):
+    admin = _create_user(session, email="admin.pra@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={"type": "LINK", "title": "x", "url": "https://x"},
+        headers=_auth_headers(admin),
+    ).json()
+    client.delete(f"/processes/{process['id']}", headers=_auth_headers(admin))
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"title": "novo"},
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PROCESS_NOT_EDITABLE"
+
+
+def test_atualizar_resource_titulo_vazio_retorna_422(
+    client: TestClient, session: Session
+):
+    admin = _create_user(session, email="admin.prv@ifam.edu.br")
+    sector = _create_sector(session)
+    process = _create_process(client, _auth_headers(admin))
+    step = client.post(
+        f"/processes/{process['id']}/steps",
+        json=_step_payload(sector.id),
+        headers=_auth_headers(admin),
+    ).json()
+    resource = client.post(
+        f"/processes/{process['id']}/steps/{step['id']}/resources",
+        json={"type": "LINK", "title": "x", "url": "https://x"},
+        headers=_auth_headers(admin),
+    ).json()
+
+    response = client.patch(
+        f"/processes/{process['id']}/steps/{step['id']}/resources/{resource['id']}",
+        json={"title": ""},
+        headers=_auth_headers(admin),
+    )
+
+    assert response.status_code == 422
+
+
 # ---------- Casos de ownership (USER autor cria fluxo proprio) ----------
 
 

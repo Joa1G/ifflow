@@ -35,9 +35,14 @@ export function StepsSection({
   editable = true,
 }: StepsSectionProps) {
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editing, setEditing] = useState<FlowStepRead | null>(null);
+  // Guardamos só o ID do step em edição — o objeto vem sempre do `sortedSteps`
+  // derivado da prop. Sem isso, mutations em recurso (create/update/delete)
+  // invalidam o cache do TanStack Query e a lista atualiza, mas o snapshot
+  // antigo permanece em `editing` e o modal exibe `step.resources` stale —
+  // forçando o usuário a fechar/reabrir para ver a mudança.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailStep, setDetailStep] = useState<FlowStepRead | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const sortedSteps = useMemo(() => {
     if (!steps) return [];
@@ -49,18 +54,29 @@ export function StepsSection({
     return sortedSteps[sortedSteps.length - 1]!.order + 1;
   }, [sortedSteps]);
 
+  const editingStep = useMemo(
+    () =>
+      editingId ? sortedSteps.find((s) => s.id === editingId) ?? null : null,
+    [editingId, sortedSteps],
+  );
+  const detailStep = useMemo(
+    () =>
+      detailId ? sortedSteps.find((s) => s.id === detailId) ?? null : null,
+    [detailId, sortedSteps],
+  );
+
   const openCreate = () => {
-    setEditing(null);
+    setEditingId(null);
     setEditorOpen(true);
   };
 
   const openEdit = (step: FlowStepRead) => {
-    setEditing(step);
+    setEditingId(step.id);
     setEditorOpen(true);
   };
 
   const openDetails = (step: FlowStepRead) => {
-    setDetailStep(step);
+    setDetailId(step.id);
     setDetailOpen(true);
   };
 
@@ -99,7 +115,7 @@ export function StepsSection({
         {editable ? (
           <StepEditorDialog
             processId={processId}
-            step={editing}
+            step={editingStep}
             nextOrder={nextOrder}
             open={editorOpen}
             onOpenChange={setEditorOpen}
@@ -145,7 +161,7 @@ export function StepsSection({
       {editable ? (
         <StepEditorDialog
           processId={processId}
-          step={editing}
+          step={editingStep}
           nextOrder={nextOrder}
           open={editorOpen}
           onOpenChange={setEditorOpen}

@@ -459,7 +459,8 @@ export interface paths {
         delete: operations["delete_resource_processes__process_id__steps__step_id__resources__resource_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Resource */
+        patch: operations["update_resource_processes__process_id__steps__step_id__resources__resource_id__patch"];
         trace?: never;
     };
     "/processes/{process_id}/submit-for-review": {
@@ -1242,6 +1243,22 @@ export interface components {
             url: string | null;
             /** Content */
             content: string | null;
+        };
+        /**
+         * StepResourceUpdate
+         * @description Input de edicao parcial de recurso. Mesmo padrao de FlowStepUpdate:
+         *     todos os campos opcionais; `model_dump(exclude_unset=True)` no service
+         *     aplica so o que veio. `url` e `content` nullable explicito permite
+         *     limpar o campo enviando `null`.
+         */
+        StepResourceUpdate: {
+            type?: components["schemas"]["ResourceType"] | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Content */
+            content?: string | null;
         };
         /**
          * StepStatus
@@ -2239,6 +2256,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_resource_processes__process_id__steps__step_id__resources__resource_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: string;
+                step_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepResourceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepResourceAdminView"];
+                };
             };
             /** @description Validation Error */
             422: {
