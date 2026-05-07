@@ -15,13 +15,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlmodel import Session, select
 
-# Carrega o .env da raiz do monorepo (mesma resolução que config.py)
+# Carrega o .env da raiz do monorepo (mesma resolução que config.py).
+# Os imports de `app.*` vêm logo abaixo propositalmente — eles instanciam
+# o Settings que lê variáveis de ambiente no momento do import; sem o
+# load_dotenv antes, DATABASE_URL/JWT_SECRET viriam vazios. Daí o noqa.
 load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 
-from app.core.enums import UserRole, UserStatus
-from app.core.security import hash_password
-from app.database import engine
-from app.models.user import User
+from app.core.enums import UserRole, UserStatus  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.database import engine  # noqa: E402
+from app.models.user import User  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

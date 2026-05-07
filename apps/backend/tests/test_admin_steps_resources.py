@@ -718,9 +718,7 @@ def test_atualizar_resource_em_step_errado_retorna_404_idor(
     assert response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
 
 
-def test_atualizar_resource_sem_token_retorna_401(
-    client: TestClient, session: Session
-):
+def test_atualizar_resource_sem_token_retorna_401(client: TestClient, session: Session):
     admin = _create_user(session, email="admin.prn@ifam.edu.br")
     sector = _create_sector(session)
     process = _create_process(client, _auth_headers(admin))
