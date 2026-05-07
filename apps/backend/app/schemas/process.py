@@ -259,6 +259,18 @@ class StepResourceCreate(BaseModel):
     content: str | None = None
 
 
+class StepResourceUpdate(BaseModel):
+    """Input de edicao parcial de recurso. Mesmo padrao de FlowStepUpdate:
+    todos os campos opcionais; `model_dump(exclude_unset=True)` no service
+    aplica so o que veio. `url` e `content` nullable explicito permite
+    limpar o campo enviando `null`."""
+
+    type: ResourceType | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    url: str | None = Field(default=None, max_length=2048)
+    content: str | None = None
+
+
 class StepResourceAdminView(BaseModel):
     """Retorno admin de um recurso — inclui step_id para referencia cruzada."""
 

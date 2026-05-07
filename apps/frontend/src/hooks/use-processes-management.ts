@@ -27,6 +27,7 @@ type FlowStepCreate = components["schemas"]["FlowStepCreate"];
 type FlowStepUpdate = components["schemas"]["FlowStepUpdate"];
 type StepResourceAdminView = components["schemas"]["StepResourceAdminView"];
 type StepResourceCreate = components["schemas"]["StepResourceCreate"];
+type StepResourceUpdate = components["schemas"]["StepResourceUpdate"];
 
 export interface AdminProcessesListFilters {
   status?: ProcessStatus;
@@ -236,6 +237,36 @@ export function useCreateResource(): UseMutationResult<
       apiPost<StepResourceAdminView>(
         `/processes/${processId}/steps/${stepId}/resources`,
         body,
+      ),
+    onSettled: (_d, _e, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: processManagementQueryKey(variables.processId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["process-flow", variables.processId],
+      });
+    },
+  });
+}
+
+interface UpdateResourceInput {
+  processId: string;
+  stepId: string;
+  resourceId: string;
+  patch: StepResourceUpdate;
+}
+
+export function useUpdateResource(): UseMutationResult<
+  StepResourceAdminView,
+  ApiError,
+  UpdateResourceInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<StepResourceAdminView, ApiError, UpdateResourceInput>({
+    mutationFn: ({ processId, stepId, resourceId, patch }) =>
+      apiPatch<StepResourceAdminView>(
+        `/processes/${processId}/steps/${stepId}/resources/${resourceId}`,
+        patch,
       ),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({

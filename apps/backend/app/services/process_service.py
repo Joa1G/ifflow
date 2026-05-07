@@ -43,6 +43,7 @@ from app.schemas.process import (
     ProcessCreate,
     ProcessUpdate,
     StepResourceCreate,
+    StepResourceUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -531,6 +532,36 @@ def create_step_resource(
         url=data.url,
         content=data.content,
     )
+    session.add(resource)
+    session.commit()
+    session.refresh(resource)
+    return resource
+
+
+def update_step_resource(
+    session: Session,
+    process_id: UUID,
+    step_id: UUID,
+    resource_id: UUID,
+    data: StepResourceUpdate,
+    *,
+    requester_id: UUID,
+    requester_role: UserRole,
+) -> StepResource:
+    """Edita um recurso. Tripla validacao IDOR (process editavel, step no
+    process, resource no step). `model_dump(exclude_unset=True)` permite
+    PATCH parcial; `url=None` ou `content=None` explicitos limpam o campo."""
+    _ensure_process_editable(
+        session, process_id, requester_id=requester_id, requester_role=requester_role
+    )
+    _load_step_in_process(session, process_id, step_id)
+    resource = _load_resource_in_step(session, step_id, resource_id)
+
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(resource, field, value)
+
+    resource.updated_at = datetime.now(timezone.utc)
     session.add(resource)
     session.commit()
     session.refresh(resource)
