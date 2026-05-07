@@ -204,4 +204,27 @@ describe("<StepDetailModal />", () => {
       screen.queryByRole("heading", { level: 2, name: /autuar/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("renderiza título como link E content abaixo quando ambos existem", () => {
+    // Regressão: antes da correção, ter URL safe disparava early return e
+    // o `content` ficava invisível — quem cadastrava ambos via só o link.
+    renderModal(
+      makeStep([
+        {
+          id: "r1",
+          type: "LEGAL_BASIS",
+          title: "Lei nº 11.091/2005",
+          url: "https://planalto.gov.br/lei-11091",
+          content:
+            "Art. 96-A. O servidor terá direito a afastamento para programa de pós-graduação stricto sensu.",
+        },
+      ]),
+    );
+
+    const link = screen.getByRole("link", { name: /11\.091/i });
+    expect(link).toHaveAttribute("href", "https://planalto.gov.br/lei-11091");
+    expect(
+      screen.getByText(/Art\. 96-A\. O servidor terá direito/i),
+    ).toBeInTheDocument();
+  });
 });
